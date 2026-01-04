@@ -16,6 +16,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Plus, Trash2 } from "lucide-react";
 import type { TaskWithStats, InsertTask, TaskItem } from "@shared/schema";
 import { z } from "zod";
+import { useAuth } from "@/hooks/useAuth";
 
 const colorOptions = [
   { value: "#3B82F6", label: "Azul" },
@@ -31,10 +32,13 @@ interface TaskModalProps {
   onClose: () => void;
 }
 
+
+
 export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
   const [selectedColor, setSelectedColor] = useState("#3B82F6");
   const [newItemTitle, setNewItemTitle] = useState("");
   const { toast } = useToast();
+  const { user } = useAuth(); // Get current user
 
   const { data: taskItems } = useQuery<TaskItem[]>({
     queryKey: [`/api/tasks/${task?.id}/items`],
@@ -48,22 +52,26 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
       description: "",
       color: "#3B82F6",
       isActive: true,
+      source: "sistema", // Default source
+      userId: 0, // Placeholder, will be overwritten on submit
     },
   });
 
   // Update form when task changes
   useEffect(() => {
     if (task) {
-      const deadlineValue = task.deadline ? 
+      const deadlineValue = task.deadline ?
         new Date(task.deadline).toISOString().slice(0, 16) : "";
-      
+
       form.reset({
         name: task.name,
         description: task.description || "",
         color: task.color,
         isActive: task.isActive,
         estimatedHours: task.estimatedHours ? Math.round(task.estimatedHours * 60) : null,
-        deadline: deadlineValue,
+        deadline: deadlineValue as any,
+        source: task.source,
+        userId: task.userId,
       });
       setSelectedColor(task.color);
     } else {
@@ -73,11 +81,13 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
         color: "#3B82F6",
         isActive: true,
         estimatedHours: null,
-        deadline: "",
+        deadline: "" as any,
+        source: "sistema",
+        userId: user?.id || 0,
       });
       setSelectedColor("#3B82F6");
     }
-  }, [task, form]);
+  }, [task, form, user]);
 
   const createTaskMutation = useMutation({
     mutationFn: (data: InsertTask) => apiRequest("POST", "/api/tasks", data),
@@ -101,7 +111,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
   });
 
   const updateTaskMutation = useMutation({
-    mutationFn: (data: InsertTask) => 
+    mutationFn: (data: InsertTask) =>
       apiRequest("PUT", `/api/tasks/${task?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
@@ -122,7 +132,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
   });
 
   const createItemMutation = useMutation({
-    mutationFn: (title: string) => 
+    mutationFn: (title: string) =>
       apiRequest("POST", `/api/tasks/${task?.id}/items`, { title }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tasks/${task?.id}/items`] });
@@ -150,13 +160,24 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
   });
 
   const onSubmit = (data: InsertTask) => {
+    if (!user) {
+      toast({
+        title: "Erro",
+        description: "Usuário não identificado",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Convert minutes to hours for backend storage
-    const taskData = { 
-      ...data, 
+    const taskData = {
+      ...data,
       color: selectedColor,
-      estimatedHours: data.estimatedHours ? data.estimatedHours / 60 : null
+      estimatedHours: data.estimatedHours ? data.estimatedHours / 60 : null,
+      userId: user.id, // Ensure correct user ID
+      source: "sistema" // Ensure source is set
     };
-    
+
     if (task) {
       updateTaskMutation.mutate(taskData);
     } else {
@@ -289,11 +310,10 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
                     key={option.value}
                     type="button"
                     onClick={() => handleColorSelect(option.value)}
-                    className={`w-8 h-8 rounded-full border-2 transition-all hover:scale-110 ${
-                      selectedColor === option.value
-                        ? "border-gray-400 ring-2 ring-gray-300"
-                        : "border-transparent hover:border-gray-300"
-                    }`}
+                    className={`w-8 h-8 rounded-full border-2 transition-all hover:scale-110 ${selectedColor === option.value
+                      ? "border-gray-400 ring-2 ring-gray-300"
+                      : "border-transparent hover:border-gray-300"
+                      }`}
                     style={{ backgroundColor: option.value }}
                     title={option.label}
                   />
@@ -305,7 +325,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
             {task && (
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Lista de Tarefas</Label>
-                
+
                 {/* Add new item */}
                 <div className="flex space-x-2">
                   <Input
