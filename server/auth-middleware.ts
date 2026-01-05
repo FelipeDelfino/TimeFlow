@@ -26,7 +26,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; username: string };
     const user = await storage.getUser(decoded.userId);
-    
+
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'Token inválido ou usuário inativo' });
     }
@@ -37,7 +37,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
       role: user.role,
       apiKey: user.apiKey || ''
     };
-    
+
     next();
   } catch (error) {
     return res.status(403).json({ message: 'Token inválido' });
@@ -54,7 +54,7 @@ export async function authenticateApiKey(req: AuthenticatedRequest, res: Respons
 
   try {
     const user = await storage.getUserByApiKey(apiKey);
-    
+
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'API Key inválida ou usuário inativo' });
     }
@@ -65,7 +65,7 @@ export async function authenticateApiKey(req: AuthenticatedRequest, res: Respons
       role: user.role,
       apiKey: user.apiKey || ''
     };
-    
+
     next();
   } catch (error) {
     return res.status(500).json({ message: 'Erro interno na autenticação' });
@@ -76,19 +76,19 @@ export async function authenticateApiKey(req: AuthenticatedRequest, res: Respons
 export async function authenticateAny(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   const apiKey = req.headers['x-api-key'] as string;
-  
+
   // Priorizar JWT se presente
   if (authHeader) {
     return authenticateToken(req, res, next);
   }
-  
+
   // Fallback para API Key
   if (apiKey) {
     return authenticateApiKey(req, res, next);
   }
-  
-  return res.status(401).json({ 
-    message: 'Autenticação obrigatória: forneça Bearer Token ou X-API-Key header' 
+
+  return res.status(401).json({
+    message: 'Autenticação obrigatória: forneça Bearer Token ou X-API-Key header'
   });
 }
 
@@ -98,11 +98,11 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     if (err || !req.user) {
       return res.status(401).json({ message: "Token inválido" });
     }
-    
+
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: "Acesso negado. Apenas administradores podem acessar esta funcionalidade." });
     }
-    
+
     next();
   });
 }
@@ -125,15 +125,15 @@ export function generateJwtToken(userId: number, username: string): string {
 }
 
 export async function createUserWithDefaults(
-  username: string, 
-  password: string, 
-  email: string, 
+  username: string,
+  password: string,
+  email: string,
   fullName: string,
   role: 'admin' | 'user' = 'user',
   mustResetPassword: boolean = false
 ) {
   const hashedPassword = await hashPassword(password);
-  
+
   const userData = {
     username,
     password: hashedPassword,
@@ -143,10 +143,19 @@ export async function createUserWithDefaults(
     isActive: true,
     mustResetPassword
   };
-  
+
   const user = await storage.createUser(userData);
   const apiKey = await storage.generateApiKey(user.id);
-  
+
+  // Create Personal Project
+  await storage.createProject({
+    name: `Projeto Pessoal - ${user.fullName.split(' ')[0]}`,
+    description: "Seu espaço para tarefas pessoais e privadas",
+    isPersonal: true,
+    ownerId: user.id,
+    isActive: true
+  });
+
   return { ...user, apiKey };
 }
 
@@ -168,44 +177,44 @@ export async function createPasswordResetToken(userId: number) {
   const crypto = await import('crypto');
   const resetToken = crypto.randomBytes(32).toString('hex');
   const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
-  
+
   await storage.updateUser(userId, {
     resetToken,
     resetTokenExpiry
   });
-  
+
   return resetToken;
 }
 
 export async function validateResetToken(token: string) {
   const user = await storage.getUserByResetToken(token);
-  
+
   if (!user || !user.resetTokenExpiry) {
     return null;
   }
-  
+
   if (new Date() > user.resetTokenExpiry) {
     return null; // Token expirado
   }
-  
+
   return user;
 }
 
 export async function resetPassword(token: string, newPassword: string) {
   const user = await validateResetToken(token);
-  
+
   if (!user) {
     throw new Error('Token inválido ou expirado');
   }
-  
+
   const hashedPassword = await hashPassword(newPassword);
-  
+
   await storage.updateUser(user.id, {
     password: hashedPassword,
     resetToken: null,
     resetTokenExpiry: null,
     mustResetPassword: false
   });
-  
+
   return user;
 }

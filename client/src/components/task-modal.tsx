@@ -14,9 +14,15 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Plus, Trash2 } from "lucide-react";
-import type { TaskWithStats, InsertTask, TaskItem } from "@shared/schema";
-import { z } from "zod";
+import type { TaskWithStats, InsertTask, TaskItem, Project } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const colorOptions = [
   { value: "#3B82F6", label: "Azul" },
@@ -32,8 +38,6 @@ interface TaskModalProps {
   onClose: () => void;
 }
 
-
-
 export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
   const [selectedColor, setSelectedColor] = useState("#3B82F6");
   const [newItemTitle, setNewItemTitle] = useState("");
@@ -45,6 +49,11 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
     enabled: !!task?.id && isOpen,
   });
 
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+    enabled: isOpen,
+  });
+
   const form = useForm<InsertTask>({
     resolver: zodResolver(insertTaskSchema),
     defaultValues: {
@@ -52,8 +61,9 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
       description: "",
       color: "#3B82F6",
       isActive: true,
-      source: "sistema", // Default source
-      userId: 0, // Placeholder, will be overwritten on submit
+      source: "sistema",
+      userId: 0,
+      projectId: null,
     },
   });
 
@@ -72,6 +82,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
         deadline: deadlineValue as any,
         source: task.source,
         userId: task.userId,
+        projectId: task.projectId,
       });
       setSelectedColor(task.color);
     } else {
@@ -84,6 +95,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
         deadline: "" as any,
         source: "sistema",
         userId: user?.id || 0,
+        projectId: null,
       });
       setSelectedColor("#3B82F6");
     }
@@ -213,6 +225,35 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="projectId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Projeto</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    value={field.value ? field.value.toString() : ""}
+                    disabled={!projects || projects.length === 0}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um projeto" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {projects?.map((project) => (
+                        <SelectItem key={project.id} value={project.id.toString()}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

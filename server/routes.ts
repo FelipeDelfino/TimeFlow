@@ -20,8 +20,14 @@ import {
 import { whatsappService } from "./whatsapp-service";
 import { emailService } from "./email-service";
 import { createUserByAdminSchema, loginSchema, resetPasswordSchema } from "@shared/schema";
+import { registerTeamRoutes } from "./team-routes";
+import { registerProjectRoutes } from "./project-routes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Register modular routes
+  registerTeamRoutes(app);
+  registerProjectRoutes(app);
+
   // Health check endpoint para Render (sem autenticação)
   app.get('/health', (req, res) => {
     res.status(200).json({
@@ -126,6 +132,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User search (for team members addition)
+  app.get("/api/users/search", authenticateAny, async (req: AuthenticatedRequest, res) => {
+    try {
+      const query = (req.query.q as string || "").toLowerCase();
+      if (query.length < 2) return res.json([]);
+
+      const allUsers = await storage.getAllUsers();
+      const matched = allUsers
+        .filter(u =>
+          u.username.toLowerCase().includes(query) ||
+          u.fullName.toLowerCase().includes(query) ||
+          u.email.toLowerCase().includes(query)
+        )
+        .slice(0, 10)
+        .map(u => ({ id: u.id, username: u.username, fullName: u.fullName, email: u.email }));
+
+      res.json(matched);
+    } catch (error) {
+      res.status(500).json({ message: "Error searching users" });
+    }
+  });
+
   // Obter informações do usuário autenticado
   app.get('/api/auth/me', authenticateAny, async (req: AuthenticatedRequest, res) => {
     try {
@@ -205,18 +233,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/admin/users', authenticateAdmin, async (req: AuthenticatedRequest, res) => {
     try {
       const users = await storage.getAllUsers();
-      const usersResponse = users.map(user => ({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        isActive: user.isActive,
-        mustResetPassword: user.mustResetPassword,
-        lastLogin: user.lastLogin,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+
+      const usersResponse = await Promise.all(users.map(async (user) => {
+        const managedTeams = await storage.getManagedTeams(user.id);
+
+        return {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          mustResetPassword: user.mustResetPassword,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          managedTeams: managedTeams // Include managed teams info
+        };
       }));
+
       res.json(usersResponse);
     } catch (error: any) {
       console.error('Erro ao listar usuários:', error);
@@ -310,6 +345,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('Erro ao atualizar usuário:', error);
+      res.status(500).json({ message: 'Erro interno do servidor' });
+    }
+  });
+
+  // Update user role
+  app.patch('/api/admin/users/:id/role', authenticateAdmin, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const { role } = req.body;
+
+      if (!['admin', 'user'].includes(role)) {
+        return res.status(400).json({ message: "Role inválido. Use 'admin' ou 'user'." });
+      }
+
+      const updatedUser = await storage.updateUser(userId, { role });
+
+      if (!updatedUser) {
+        return res.status(404).json({ message: 'Usuário não encontrado' });
+      }
+
+      res.json(updatedUser);
+    } catch (error: any) {
+      console.error('Erro ao atualizar role:', error);
       res.status(500).json({ message: 'Erro interno do servidor' });
     }
   });
@@ -978,11 +1036,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics routes
-  app.get("/api/dashboard/stats", async (req, res) => {
+  app.get("/api/dashboard/stats", authenticateAny, async (req: AuthenticatedRequest, res) => {
     try {
-      const stats = await storage.getDashboardStats();
+      const stats = await storage.getDashboardStats(req.user!.id);
       res.json(stats);
     } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
       res.status(500).json({ message: "Failed to fetch dashboard stats" });
     }
   });
@@ -1110,22 +1169,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/reports/time-by-task", async (req, res) => {
+  app.get("/api/reports/time-by-task", authenticateAny, async (req: AuthenticatedRequest, res) => {
     try {
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-      const data = await storage.getTimeByTask(startDate, endDate);
+      console.log(`[Report] TimeByTask - User: ${req.user!.id}, Query:`, req.query);
+      const start = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      const end = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+
+      console.log(`[Report] TimeByTask - Parsed Dates: Start=${start}, End=${end}`);
+
+      const data = await storage.getTimeByTask(req.user!.id, start, end);
+      console.log(`[Report] TimeByTask - Found ${data.length} records`);
       res.json(data);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch time by task report" });
+      console.error('Error fetching time by task:', error);
+      res.status(500).json({ message: "Failed to fetch dashboard data" });
     }
   });
 
-  app.get("/api/reports/daily-stats", async (req, res) => {
+  app.get("/api/reports/daily-stats", authenticateAny, async (req: AuthenticatedRequest, res) => {
     try {
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
-      const data = await storage.getDailyStats(startDate, endDate);
+      console.log(`[Report] DailyStats - User: ${req.user!.id}, Query:`, req.query);
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      console.log(`[Report] DailyStats - Parsed Dates: Start=${start}, End=${end}`);
+
+      const data = await storage.getDailyStats(req.user!.id, start, end);
+      console.log(`[Report] DailyStats - Found ${data.length} days with data`);
       res.json(data);
     } catch (error) {
       console.error("Daily stats error:", error);
@@ -1462,7 +1535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // API Integration endpoints - simplified for external use
 
   // Quick entry creation - simplified endpoint for external integrations
-  app.post("/api/quick-entry", async (req, res) => {
+  app.post("/api/quick-entry", authenticateAny, async (req: any, res) => {
     try {
       const { taskName, startTime, endTime, duration, description } = req.body;
 
@@ -1474,7 +1547,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Find or create task by name
       let task;
       const allTasks = await storage.getAllTasks();
-      task = allTasks.find(t => t.name.toLowerCase() === taskName.toLowerCase());
+      // Filter by user to avoid conflict
+      task = allTasks.find(t => t.name.toLowerCase() === taskName.toLowerCase() && t.userId === req.user.id);
 
       if (!task) {
         // Create new task if not found
@@ -1483,7 +1557,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: description || "",
           color: "#3B82F6",
           isActive: true,
-          deadline: null
+          deadline: null,
+          userId: req.user.id,
+          source: "quick_entry_api"
         });
       }
 
@@ -1521,6 +1597,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Dados inválidos", errors: error.errors });
       }
       res.status(500).json({ message: "Falha ao criar apontamento" });
+    }
+  });
+
+  // Admin migration route
+  app.post("/api/admin/migrate-projects", authenticateAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      let migratedCount = 0;
+      let tasksMigratedCount = 0;
+
+      for (const user of users) {
+        // Create a default "Personal" project for each user
+        let personalProject = await storage.getUserPersonalProject(user.id);
+
+        if (!personalProject) {
+          personalProject = await storage.createProject({
+            name: `Projeto Pessoal - ${user.fullName.split(' ')[0]}`,
+            description: "Seu espaço para tarefas pessoais e privadas",
+            isPersonal: true,
+            ownerId: user.id,
+            isActive: true
+          });
+          migratedCount++;
+        }
+
+        if (personalProject) {
+          // Migrar tarefas órfãs
+          tasksMigratedCount += await storage.migrateOrphanTasks(user.id, personalProject.id);
+        }
+      }
+
+      res.json({
+        message: 'Migração de projetos concluída',
+        usersMigrated: migratedCount,
+        tasksMigrated: tasksMigratedCount
+      });
+    } catch (error: any) {
+      console.error("Admin migration error:", error);
+      res.status(500).json({ message: "Falha ao migrar projetos", error: error.message });
     }
   });
 
@@ -1672,7 +1787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/status", async (req, res) => {
     try {
       const runningEntries = await storage.getRunningTimeEntries();
-      const stats = await storage.getDashboardStats();
+      // const stats = await storage.getDashboardStats();
 
       res.json({
         currentTime: new Date().toISOString(),
@@ -1685,9 +1800,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: entry.notes
         })),
         todayStats: {
-          totalTime: stats.todayTime,
-          activeTasks: stats.activeTasks,
-          completedTasks: stats.completedTasks
+          totalTime: 0, // stats.todayTime,
+          activeTasks: 0, // stats.activeTasks,
+          completedTasks: 0 // stats.completedTasks
         }
       });
     } catch (error) {

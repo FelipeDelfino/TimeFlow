@@ -1,4 +1,4 @@
-import { tasks, taskItems, timeEntries, whatsappIntegrations, whatsappLogs, notificationSettings, users, type Task, type InsertTask, type TaskItem, type InsertTaskItem, type TimeEntry, type InsertTimeEntry, type UpdateTimeEntry, type TaskWithStats, type TimeEntryWithTask, type WhatsappIntegration, type InsertWhatsappIntegration, type WhatsappLog, type InsertWhatsappLog, type NotificationSettings, type InsertNotificationSettings, type User, type InsertUser } from "@shared/schema";
+import { tasks, taskItems, timeEntries, whatsappIntegrations, whatsappLogs, notificationSettings, users, teams, teamMembers, teamManagers, projects, projectTeams, type Task, type InsertTask, type TaskItem, type InsertTaskItem, type TimeEntry, type InsertTimeEntry, type UpdateTimeEntry, type TaskWithStats, type TimeEntryWithTask, type WhatsappIntegration, type InsertWhatsappIntegration, type WhatsappLog, type InsertWhatsappLog, type NotificationSettings, type InsertNotificationSettings, type User, type InsertUser, type Team, type InsertTeam, type TeamMember, type InsertTeamMember, type TeamManager, type InsertTeamManager, type Project, type InsertProject, type ProjectTeam, type InsertProjectTeam } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, isNull, desc, asc } from "drizzle-orm";
 import { IStorage } from "./storage";
@@ -68,36 +68,214 @@ export class DatabaseStorage implements IStorage {
     return !!user && user.isActive;
   }
 
+  // Team methods
+  async getAllTeams(): Promise<Team[]> {
+    return db.select().from(teams);
+  }
+
+  async updateUserManagedTeams(userId: number, teamIds: number[]): Promise<void> {
+    // Transaction to ensure atomicity
+    await db.transaction(async (tx) => {
+      // Remove all existing managements for this user
+      await tx.delete(teamManagers).where(eq(teamManagers.userId, userId));
+
+      // Insert new ones
+      if (teamIds.length > 0) {
+        await tx.insert(teamManagers).values(
+          teamIds.map(teamId => ({
+            userId,
+            teamId
+          }))
+        );
+      }
+    });
+  }
+
+  async createTeam(team: InsertTeam): Promise<Team> {
+    const [newTeam] = await db.insert(teams).values(team).returning();
+    return newTeam;
+  }
+
+  async getTeam(id: number): Promise<Team | undefined> {
+    const [team] = await db.select().from(teams).where(eq(teams.id, id));
+    return team || undefined;
+  }
+
+  async updateTeam(id: number, updates: Partial<Team>): Promise<Team | undefined> {
+    const [updatedTeam] = await db.update(teams).set(updates).where(eq(teams.id, id)).returning();
+    return updatedTeam || undefined;
+  }
+
+  async deleteTeam(id: number): Promise<boolean> {
+    // Manually cleanup dependencies for now (soft delete would be better, but interface asks for delete)
+    await db.delete(teamMembers).where(eq(teamMembers.teamId, id));
+    await db.delete(teamManagers).where(eq(teamManagers.teamId, id));
+    await db.delete(projectTeams).where(eq(projectTeams.teamId, id));
+
+    const result = await db.delete(teams).where(eq(teams.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async addTeamMember(member: InsertTeamMember): Promise<TeamMember> {
+    const [newMember] = await db.insert(teamMembers).values(member).returning();
+    return newMember;
+  }
+
+  async removeTeamMember(teamId: number, userId: number): Promise<boolean> {
+    const result = await db.delete(teamMembers)
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async getTeamMembers(teamId: number): Promise<User[]> {
+    const members = await db.select({
+      user: users
+    })
+      .from(teamMembers)
+      .innerJoin(users, eq(teamMembers.userId, users.id))
+      .where(eq(teamMembers.teamId, teamId));
+
+    return members.map((m: { user: User }) => m.user);
+  }
+
+  async addTeamManager(manager: InsertTeamManager): Promise<TeamManager> {
+    const [newManager] = await db.insert(teamManagers).values(manager).returning();
+    return newManager;
+  }
+
+  async removeTeamManager(teamId: number, userId: number): Promise<boolean> {
+    const result = await db.delete(teamManagers)
+      .where(and(eq(teamManagers.teamId, teamId), eq(teamManagers.userId, userId)));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async getTeamManagers(teamId: number): Promise<User[]> {
+    const managers = await db.select({
+      user: users
+    })
+      .from(teamManagers)
+      .innerJoin(users, eq(teamManagers.userId, users.id))
+      .where(eq(teamManagers.teamId, teamId));
+
+    return managers.map((m: { user: User }) => m.user);
+  }
+
+  async getTeamsForUser(userId: number): Promise<Team[]> {
+    const userTeams = await db.select({
+      team: teams
+    })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(and(eq(teamMembers.userId, userId), eq(teams.isActive, true)));
+
+    return userTeams.map((t: { team: Team }) => t.team);
+  }
+
+  async getManagedTeams(userId: number): Promise<Team[]> {
+    const managedTeams = await db.select({
+      team: teams
+    })
+      .from(teamManagers)
+      .innerJoin(teams, eq(teamManagers.teamId, teams.id))
+      .where(and(eq(teamManagers.userId, userId), eq(teams.isActive, true)));
+
+    return managedTeams.map((t: { team: Team }) => t.team);
+  }
+
+  async getAllTeams(): Promise<Team[]> {
+    return await db.select().from(teams).where(eq(teams.isActive, true));
+  }
+
+  // Project methods
+  async createProject(project: InsertProject): Promise<Project> {
+    const [newProject] = await db.insert(projects).values(project).returning();
+    return newProject;
+  }
+
+  async getProject(id: number): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project || undefined;
+  }
+
+  async updateProject(id: number, updates: Partial<Project>): Promise<Project | undefined> {
+    const [updatedProject] = await db.update(projects).set(updates).where(eq(projects.id, id)).returning();
+    return updatedProject || undefined;
+  }
+
+  async getUserPersonalProject(userId: number): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects)
+      .where(and(eq(projects.ownerId, userId), eq(projects.isPersonal, true)));
+    return project || undefined;
+  }
+
+  async getProjectsForUser(userId: number): Promise<Project[]> {
+    // 1. Projetos Pessoais
+    const personalProjects = await db.select().from(projects)
+      .where(and(eq(projects.ownerId, userId), eq(projects.isActive, true)));
+
+    // 2. Projetos dos Times que o usuário participa
+    // Query: Select projects.* from projects 
+    // join project_teams on projects.id = project_teams.project_id
+    // join team_members on project_teams.team_id = team_members.team_id
+    // where team_members.user_id = userId and projects.is_active = true
+
+    const teamProjects = await db.select({
+      project: projects
+    })
+      .from(projects)
+      .innerJoin(projectTeams, eq(projects.id, projectTeams.projectId))
+      .innerJoin(teamMembers, eq(projectTeams.teamId, teamMembers.teamId))
+      .where(and(eq(teamMembers.userId, userId), eq(projects.isActive, true)));
+
+    const allProjectsMap = new Map<number, Project>();
+    personalProjects.forEach((p: Project) => allProjectsMap.set(p.id, p));
+    teamProjects.forEach((tp: { project: Project }) => allProjectsMap.set(tp.project.id, tp.project));
+
+    return Array.from(allProjectsMap.values());
+  }
+
+  async bindProjectToTeam(projectTeam: InsertProjectTeam): Promise<ProjectTeam> {
+    const [link] = await db.insert(projectTeams).values(projectTeam).returning();
+    return link;
+  }
+
+  async migrateOrphanTasks(userId: number, projectId: number): Promise<number> {
+    const result = await db.update(tasks)
+      .set({ projectId })
+      .where(and(eq(tasks.userId, userId), isNull(tasks.projectId)));
+    return result.rowCount || 0;
+  }
+
   async getTimeEntriesByUser(userId: number, startDate?: string, endDate?: string): Promise<TimeEntry[]> {
     let query = db.select().from(timeEntries).where(eq(timeEntries.userId, userId));
-    
+
     if (startDate) {
       query = query.where(gte(timeEntries.createdAt, new Date(startDate)));
     }
-    
+
     if (endDate) {
       query = query.where(lte(timeEntries.createdAt, new Date(endDate)));
     }
-    
+
     return await query;
   }
   async getAllTasks(): Promise<TaskWithStats[]> {
     const allTasks = await db.select().from(tasks).orderBy(desc(tasks.createdAt));
-    
+
     const tasksWithStats: TaskWithStats[] = [];
-    
+
     for (const task of allTasks) {
       // Calcular tempo total da tarefa
       const entries = await db.select().from(timeEntries).where(eq(timeEntries.taskId, task.id));
       const totalTime = entries.reduce((sum: number, entry: TimeEntry) => sum + (entry.duration || 0), 0);
-      
+
       // Contar entradas ativas
       const activeEntries = await db.select().from(timeEntries)
         .where(and(eq(timeEntries.taskId, task.id), eq(timeEntries.isRunning, true)));
-      
+
       // Buscar itens da tarefa
       const items = await db.select().from(taskItems).where(eq(taskItems.taskId, task.id));
-      
+
       tasksWithStats.push({
         ...task,
         totalTime,
@@ -105,7 +283,7 @@ export class DatabaseStorage implements IStorage {
         items: items || []
       });
     }
-    
+
     return tasksWithStats;
   }
 
@@ -145,10 +323,10 @@ export class DatabaseStorage implements IStorage {
   async completeTask(id: number): Promise<Task | undefined> {
     const [updatedTask] = await db
       .update(tasks)
-      .set({ 
+      .set({
         isActive: false,
-        isCompleted: true, 
-        completedAt: new Date() 
+        isCompleted: true,
+        completedAt: new Date()
       })
       .where(eq(tasks.id, id))
       .returning();
@@ -158,10 +336,10 @@ export class DatabaseStorage implements IStorage {
   async reopenTask(id: number): Promise<Task | undefined> {
     const [updatedTask] = await db
       .update(tasks)
-      .set({ 
+      .set({
         isActive: true,
-        isCompleted: false, 
-        completedAt: null 
+        isCompleted: false,
+        completedAt: null
       })
       .where(eq(tasks.id, id))
       .returning();
@@ -290,16 +468,16 @@ export class DatabaseStorage implements IStorage {
   async deleteTimeEntry(id: number): Promise<boolean> {
     // Verificar se a entrada está ativa antes de excluir
     const [entry] = await db.select().from(timeEntries).where(eq(timeEntries.id, id));
-    
+
     if (!entry) {
       return false;
     }
-    
+
     // Prevenir exclusão de entradas ativas
     if (entry.isRunning || entry.endTime === null) {
       return false;
     }
-    
+
     const result = await db.delete(timeEntries).where(eq(timeEntries.id, id));
     return (result.rowCount || 0) > 0;
   }
@@ -309,7 +487,7 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount || 0) > 0;
   }
 
-  async getDashboardStats(): Promise<{
+  async getDashboardStats(userId: number): Promise<{
     todayTime: number;
     activeTasks: number;
     weekTime: number;
@@ -329,24 +507,33 @@ export class DatabaseStorage implements IStorage {
 
     // Tempo de hoje
     const todayEntries = await db.select().from(timeEntries)
-      .where(gte(timeEntries.startTime, startOfDay));
+      .where(and(
+        eq(timeEntries.userId, userId),
+        gte(timeEntries.startTime, startOfDay)
+      ));
     const todayTime = todayEntries.reduce((sum: number, entry: TimeEntry) => sum + (entry.duration || 0), 0);
 
     // Tempo da semana
     const weekEntries = await db.select().from(timeEntries)
-      .where(gte(timeEntries.startTime, startOfWeek));
+      .where(and(
+        eq(timeEntries.userId, userId),
+        gte(timeEntries.startTime, startOfWeek)
+      ));
     const weekTime = weekEntries.reduce((sum: number, entry: TimeEntry) => sum + (entry.duration || 0), 0);
 
     // Tempo do mês
     const monthEntries = await db.select().from(timeEntries)
-      .where(gte(timeEntries.startTime, startOfMonth));
+      .where(and(
+        eq(timeEntries.userId, userId),
+        gte(timeEntries.startTime, startOfMonth)
+      ));
     const monthTime = monthEntries.reduce((sum: number, entry: TimeEntry) => sum + (entry.duration || 0), 0);
 
     // Tarefas ativas
-    const activeTasks = await db.select().from(tasks).where(eq(tasks.isActive, true));
-    
+    const activeTasks = await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.isActive, true)));
+
     // Tarefas concluídas
-    const completedTasks = await db.select().from(tasks).where(eq(tasks.isCompleted, true));
+    const completedTasks = await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.isCompleted, true)));
 
     return {
       todayTime,
@@ -362,7 +549,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getTimeByTask(startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>> {
+  async getTimeByTask(userId: number, startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>> {
     const baseQuery = db
       .select({
         task: tasks,
@@ -371,24 +558,20 @@ export class DatabaseStorage implements IStorage {
       .from(timeEntries)
       .leftJoin(tasks, eq(timeEntries.taskId, tasks.id));
 
-    let results;
-    if (startDate || endDate) {
-      const conditions = [];
-      if (startDate) conditions.push(gte(timeEntries.startTime, startDate));
-      if (endDate) conditions.push(lte(timeEntries.startTime, endDate));
-      results = await baseQuery.where(and(...conditions));
-    } else {
-      results = await baseQuery;
-    }
-    
+    const conditions = [eq(timeEntries.userId, userId)];
+    if (startDate) conditions.push(gte(timeEntries.startTime, startDate));
+    if (endDate) conditions.push(lte(timeEntries.startTime, endDate));
+
+    const results = await baseQuery.where(and(...conditions));
+
     const taskTimeMap = new Map<number, { task: Task; totalTime: number }>();
-    
+
     for (const result of results) {
       if (!result.task) continue;
-      
+
       const taskId = result.task.id;
       const duration = result.entry?.duration || 0;
-      
+
       if (taskTimeMap.has(taskId)) {
         taskTimeMap.get(taskId)!.totalTime += duration;
       } else {
@@ -398,28 +581,29 @@ export class DatabaseStorage implements IStorage {
         });
       }
     }
-    
+
     return Array.from(taskTimeMap.values()).sort((a, b) => b.totalTime - a.totalTime);
   }
 
-  async getDailyStats(startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>> {
+  async getDailyStats(userId: number, startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>> {
     const entries = await db.select().from(timeEntries)
       .where(and(
+        eq(timeEntries.userId, userId),
         gte(timeEntries.startTime, startDate),
         lte(timeEntries.startTime, endDate)
       ));
 
     const dailyMap = new Map<string, number>();
-    
+
     for (const entry of entries) {
       const date = entry.startTime.toISOString().split('T')[0];
       const duration = entry.duration || 0;
       dailyMap.set(date, (dailyMap.get(date) || 0) + duration);
     }
-    
+
     const result: Array<{ date: string; totalTime: number }> = [];
     const currentDate = new Date(startDate);
-    
+
     while (currentDate <= endDate) {
       const dateStr = currentDate.toISOString().split('T')[0];
       result.push({
@@ -428,45 +612,45 @@ export class DatabaseStorage implements IStorage {
       });
       currentDate.setDate(currentDate.getDate() + 1);
     }
-    
+
     return result;
   }
 
   // Método de retry para operações de banco de dados
   private async retryDatabaseOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
     let lastError: any;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await operation();
       } catch (error: any) {
         lastError = error;
         console.error(`❌ Tentativa ${attempt}/${maxRetries} falhou para ${operationName}:`, error.message);
-        
+
         // Se for erro de conectividade ou hibernação do Neon, tentar novamente após delay
-        if (error.message?.includes('fetch failed') || 
-            error.message?.includes('ECONNREFUSED') ||
-            error.message?.includes('network') ||
-            error.message?.includes('timeout') ||
-            error.message?.includes('endpoint is disabled') ||
-            error.message?.includes('Control plane request failed')) {
-          
+        if (error.message?.includes('fetch failed') ||
+          error.message?.includes('ECONNREFUSED') ||
+          error.message?.includes('network') ||
+          error.message?.includes('timeout') ||
+          error.message?.includes('endpoint is disabled') ||
+          error.message?.includes('Control plane request failed')) {
+
           if (attempt < maxRetries) {
             // Para hibernação do Neon, usar delays maiores
-            const isNeonHibernation = error.message?.includes('endpoint is disabled') || 
-                                      error.message?.includes('Control plane request failed');
+            const isNeonHibernation = error.message?.includes('endpoint is disabled') ||
+              error.message?.includes('Control plane request failed');
             const delay = isNeonHibernation ? (attempt * 3000) : (attempt * 1000); // 3s, 6s, 9s para Neon / 1s, 2s, 3s para outros
             console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
         }
-        
+
         // Para outros tipos de erro, falhar imediatamente
         break;
       }
     }
-    
+
     throw lastError;
   }
 
@@ -474,22 +658,22 @@ export class DatabaseStorage implements IStorage {
   async getWhatsappIntegration(): Promise<WhatsappIntegration | undefined> {
     return this.retryDatabaseOperation(async () => {
       const [integration] = await db.select({
-      id: whatsappIntegrations.id,
-      instanceName: whatsappIntegrations.instanceName,
-      apiUrl: whatsappIntegrations.apiUrl,
-      apiKey: whatsappIntegrations.apiKey,
-      phoneNumber: whatsappIntegrations.phoneNumber,
-      isActive: whatsappIntegrations.isActive,
-      webhookUrl: whatsappIntegrations.webhookUrl,
-      authorizedNumbers: whatsappIntegrations.authorizedNumbers,
-      restrictToNumbers: whatsappIntegrations.restrictToNumbers,
-      allowedGroupJid: whatsappIntegrations.allowedGroupJid,
-      responseMode: whatsappIntegrations.responseMode,
-      lastConnection: whatsappIntegrations.lastConnection,
-      createdAt: whatsappIntegrations.createdAt,
-      updatedAt: whatsappIntegrations.updatedAt,
+        id: whatsappIntegrations.id,
+        instanceName: whatsappIntegrations.instanceName,
+        apiUrl: whatsappIntegrations.apiUrl,
+        apiKey: whatsappIntegrations.apiKey,
+        phoneNumber: whatsappIntegrations.phoneNumber,
+        isActive: whatsappIntegrations.isActive,
+        webhookUrl: whatsappIntegrations.webhookUrl,
+        authorizedNumbers: whatsappIntegrations.authorizedNumbers,
+        restrictToNumbers: whatsappIntegrations.restrictToNumbers,
+        allowedGroupJid: whatsappIntegrations.allowedGroupJid,
+        responseMode: whatsappIntegrations.responseMode,
+        lastConnection: whatsappIntegrations.lastConnection,
+        createdAt: whatsappIntegrations.createdAt,
+        updatedAt: whatsappIntegrations.updatedAt,
       }).from(whatsappIntegrations).limit(1);
-      
+
       return integration || undefined;
     }, 'getWhatsappIntegration');
   }
@@ -497,12 +681,12 @@ export class DatabaseStorage implements IStorage {
   async createWhatsappIntegration(integration: InsertWhatsappIntegration): Promise<WhatsappIntegration> {
     return this.retryDatabaseOperation(async () => {
       console.log("🔄 DatabaseStorage.createWhatsappIntegration - Input:", JSON.stringify(integration, null, 2));
-      
+
       const [created] = await db
         .insert(whatsappIntegrations)
         .values(integration)
         .returning();
-      
+
       console.log("✅ DatabaseStorage.createWhatsappIntegration - Created:", created);
       return created;
     }, 'createWhatsappIntegration');
@@ -557,7 +741,7 @@ export class DatabaseStorage implements IStorage {
     if (!existing) {
       return undefined;
     }
-    
+
     const [updated] = await db
       .update(notificationSettings)
       .set(updates)

@@ -14,6 +14,8 @@ import ManagerPage from "@/pages/manager-page";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login-page";
 import InitializePage from "@/pages/initialize-page";
+import TeamsPage from "@/pages/teams";
+import TeamDetailsPage from "@/pages/team-details";
 import { useAuth } from "@/hooks/useAuth";
 import { useSystemInitialized } from "@/hooks/useSystemInitialized";
 
@@ -24,10 +26,12 @@ function AuthenticatedRoutes() {
         <Route path="/" component={Dashboard} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/tasks" component={Tasks} />
+        <Route path="/teams" component={TeamsPage} />
+        <Route path="/teams/:id" component={TeamDetailsPage} />
         <Route path="/timer" component={Timer} />
         <Route path="/reports" component={Reports} />
         <Route path="/history" component={History} />
-        <Route path="/whatsapp" component={WhatsAppPage} />
+        {/* <Route path="/whatsapp" component={WhatsAppPage} /> */}
         <Route path="/manager" component={ManagerPage} />
         <Route component={NotFound} />
       </Switch>

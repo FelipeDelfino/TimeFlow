@@ -1,10 +1,12 @@
-import { 
+import {
   tasks, taskItems, timeEntries, whatsappIntegrations, whatsappLogs, notificationSettings, users,
-  type Task, type InsertTask, type TaskItem, type InsertTaskItem, 
+  type Task, type InsertTask, type TaskItem, type InsertTaskItem,
   type TimeEntry, type InsertTimeEntry, type UpdateTimeEntry, type TimeEntryWithTask, type TaskWithStats,
   type WhatsappIntegration, type InsertWhatsappIntegration, type WhatsappLog, type InsertWhatsappLog,
   type NotificationSettings, type InsertNotificationSettings,
-  type User, type InsertUser
+  type User, type InsertUser,
+  type Team, type InsertTeam, type TeamMember, type InsertTeamMember, type TeamManager, type InsertTeamManager,
+  type Project, type InsertProject, type ProjectTeam, type InsertProjectTeam
 } from "@shared/schema";
 
 export interface IStorage {
@@ -20,6 +22,31 @@ export interface IStorage {
   deleteUser(id: number): Promise<boolean>;
   generateApiKey(userId: number): Promise<string>;
   validateUserAccess(userId: number): Promise<boolean>;
+
+  // Team methods
+  createTeam(team: InsertTeam): Promise<Team>;
+  getTeam(id: number): Promise<Team | undefined>;
+  updateTeam(id: number, updates: Partial<Team>): Promise<Team | undefined>;
+  deleteTeam(id: number): Promise<boolean>;
+  addTeamMember(member: InsertTeamMember): Promise<TeamMember>;
+  removeTeamMember(teamId: number, userId: number): Promise<boolean>;
+  getTeamMembers(teamId: number): Promise<User[]>;
+  addTeamManager(manager: InsertTeamManager): Promise<TeamManager>;
+  removeTeamManager(teamId: number, userId: number): Promise<boolean>;
+  getTeamManagers(teamId: number): Promise<User[]>;
+  getTeamsForUser(userId: number): Promise<Team[]>;
+  getManagedTeams(userId: number): Promise<Team[]>;
+  getAllTeams(): Promise<Team[]>;
+
+  // Project methods
+  createProject(project: InsertProject): Promise<Project>;
+  getAllTeams(): Promise<Team[]>;
+  updateUserManagedTeams(userId: number, teamIds: number[]): Promise<void>;
+  getProject(id: number): Promise<Project | undefined>;
+  updateProject(id: number, updates: Partial<Project>): Promise<Project | undefined>;
+  getUserPersonalProject(userId: number): Promise<Project | undefined>;
+  getProjectsForUser(userId: number): Promise<Project[]>; // Personal + Team projects
+  bindProjectToTeam(projectTeam: InsertProjectTeam): Promise<ProjectTeam>;
   // Task methods
   getAllTasks(): Promise<TaskWithStats[]>;
   getTask(id: number): Promise<Task | undefined>;
@@ -46,9 +73,9 @@ export interface IStorage {
   updateTimeEntry(id: number, updates: UpdateTimeEntry): Promise<TimeEntry | undefined>;
   deleteTimeEntry(id: number): Promise<boolean>;
   deleteAllTimeEntries(): Promise<boolean>;
-  
+
   // Analytics methods
-  getDashboardStats(): Promise<{
+  getDashboardStats(userId: number): Promise<{
     todayTime: number;
     activeTasks: number;
     weekTime: number;
@@ -60,19 +87,22 @@ export interface IStorage {
     dueTomorrowTasks: number;
     nearingLimitTasks: number;
   }>;
-  getTimeByTask(startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>>;
-  getDailyStats(startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>>;
+  getTimeByTask(userId: number, startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>>;
+  getDailyStats(userId: number, startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>>;
 
   // WhatsApp Integration methods (single instance)
   getWhatsappIntegration(): Promise<WhatsappIntegration | undefined>;
   createWhatsappIntegration(integration: InsertWhatsappIntegration): Promise<WhatsappIntegration>;
   updateWhatsappIntegration(id: number, updates: Partial<WhatsappIntegration>): Promise<WhatsappIntegration | undefined>;
   deleteWhatsappIntegration(id: number): Promise<boolean>;
-  
+
   // WhatsApp Logs methods
   createWhatsappLog(log: InsertWhatsappLog): Promise<WhatsappLog>;
   getWhatsappLogs(integrationId: number, limit?: number): Promise<WhatsappLog[]>;
-  
+
+  // Migration methods
+  migrateOrphanTasks(userId: number, projectId: number): Promise<number>;
+
   // Notification Settings methods (single instance)
   getNotificationSettings(): Promise<NotificationSettings | undefined>;
   createNotificationSettings(settings: InsertNotificationSettings): Promise<NotificationSettings>;
@@ -106,7 +136,7 @@ export class MemStorage implements IStorage {
     this.currentTaskItemId = 1;
     this.currentTimeEntryId = 1;
     this.currentWhatsappLogId = 1;
-    
+
     // Sistema inicia vazio - primeiro usuário será criado via endpoint de inicialização
   }
 
@@ -180,7 +210,7 @@ export class MemStorage implements IStorage {
   async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
     const user = this.users.get(id);
     if (!user) return undefined;
-    
+
     const updatedUser = { ...user, ...updates, updatedAt: new Date() };
     this.users.set(id, updatedUser);
     return updatedUser;
@@ -200,6 +230,53 @@ export class MemStorage implements IStorage {
     const user = this.users.get(userId);
     return !!user && user.isActive;
   }
+
+  // Team methods
+  async getAllTeams(): Promise<Team[]> {
+    return Array.from(this.teams.values());
+  }
+
+  async updateUserManagedTeams(userId: number, teamIds: number[]): Promise<void> {
+    // Remove existing managers entries for this user
+    for (const [id, manager] of this.teamManagers) {
+      if (manager.userId === userId) {
+        this.teamManagers.delete(id);
+      }
+    }
+
+    // Add new entries
+    for (const teamId of teamIds) {
+      const id = this.currentId++;
+      this.teamManagers.set(id, {
+        id,
+        teamId,
+        userId,
+        assignedAt: new Date()
+      });
+    }
+  }
+
+  async createTeam(team: InsertTeam): Promise<Team> { throw new Error("Not implemented in MemStorage"); }
+  async getTeam(id: number): Promise<Team | undefined> { throw new Error("Not implemented in MemStorage"); }
+  async updateTeam(id: number, updates: Partial<Team>): Promise<Team | undefined> { throw new Error("Not implemented in MemStorage"); }
+  async deleteTeam(id: number): Promise<boolean> { throw new Error("Not implemented in MemStorage"); }
+  async addTeamMember(member: InsertTeamMember): Promise<TeamMember> { throw new Error("Not implemented in MemStorage"); }
+  async removeTeamMember(teamId: number, userId: number): Promise<boolean> { throw new Error("Not implemented in MemStorage"); }
+  async getTeamMembers(teamId: number): Promise<User[]> { throw new Error("Not implemented in MemStorage"); }
+  async addTeamManager(manager: InsertTeamManager): Promise<TeamManager> { throw new Error("Not implemented in MemStorage"); }
+  async removeTeamManager(teamId: number, userId: number): Promise<boolean> { throw new Error("Not implemented in MemStorage"); }
+  async getTeamManagers(teamId: number): Promise<User[]> { throw new Error("Not implemented in MemStorage"); }
+  async getTeamsForUser(userId: number): Promise<Team[]> { throw new Error("Not implemented in MemStorage"); }
+  async getManagedTeams(userId: number): Promise<Team[]> { throw new Error("Not implemented in MemStorage"); }
+  async getAllTeams(): Promise<Team[]> { throw new Error("Not implemented in MemStorage"); }
+
+  // Project methods (Not implemented in MemStorage)
+  async createProject(project: InsertProject): Promise<Project> { throw new Error("Not implemented in MemStorage"); }
+  async getProject(id: number): Promise<Project | undefined> { throw new Error("Not implemented in MemStorage"); }
+  async updateProject(id: number, updates: Partial<Project>): Promise<Project | undefined> { throw new Error("Not implemented in MemStorage"); }
+  async getUserPersonalProject(userId: number): Promise<Project | undefined> { throw new Error("Not implemented in MemStorage"); }
+  async getProjectsForUser(userId: number): Promise<Project[]> { throw new Error("Not implemented in MemStorage"); }
+  async bindProjectToTeam(projectTeam: InsertProjectTeam): Promise<ProjectTeam> { throw new Error("Not implemented in MemStorage"); }
 
   // Task methods
   async getAllTasks(): Promise<TaskWithStats[]> {
@@ -244,6 +321,7 @@ export class MemStorage implements IStorage {
       isActive: insertTask.isActive !== undefined ? insertTask.isActive : true,
       isCompleted: false,
       completedAt: null,
+      projectId: insertTask.projectId || null, // Added projectId support
       id,
       createdAt: new Date(),
     };
@@ -361,23 +439,23 @@ export class MemStorage implements IStorage {
 
   async getTimeEntriesByUser(userId: number, startDate?: string, endDate?: string): Promise<TimeEntry[]> {
     let entries = Array.from(this.timeEntries.values()).filter(entry => entry.userId === userId);
-    
+
     if (startDate || endDate) {
       entries = entries.filter(entry => {
         const entryDate = entry.startTime ? new Date(entry.startTime) : new Date();
-        
+
         if (startDate && entryDate < new Date(startDate)) {
           return false;
         }
-        
+
         if (endDate && entryDate > new Date(endDate)) {
           return false;
         }
-        
+
         return true;
       });
     }
-    
+
     return entries.sort((a, b) => {
       const dateA = a.endTime ? new Date(a.endTime) : new Date();
       const dateB = b.endTime ? new Date(b.endTime) : new Date();
@@ -433,7 +511,7 @@ export class MemStorage implements IStorage {
   }
 
   // Analytics methods
-  async getDashboardStats(): Promise<{
+  async getDashboardStats(userId: number): Promise<{
     todayTime: number;
     activeTasks: number;
     weekTime: number;
@@ -446,176 +524,65 @@ export class MemStorage implements IStorage {
     nearingLimitTasks: number;
   }> {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfDay);
+    startOfWeek.setDate(startOfDay.getDate() - startOfDay.getDay());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const entries = Array.from(this.timeEntries.values());
-    const tasks = Array.from(this.tasks.values());
-    
-    let todayTime = 0;
-    let weekTime = 0;
-    let monthTime = 0;
+    const userEntries = Array.from(this.timeEntries.values()).filter(e => e.userId === userId);
+    const userTasks = Array.from(this.tasks.values()).filter(t => t.userId === userId);
 
-    for (const entry of entries) {
-      const entryDate = new Date(entry.createdAt);
-      let duration = entry.duration || 0;
+    const todayTime = userEntries
+      .filter(e => e.startTime >= startOfDay)
+      .reduce((sum, e) => sum + (e.duration || 0), 0);
 
-      // Calculate current duration for running entries
-      if (entry.isRunning && entry.startTime) {
-        duration = Math.floor((Date.now() - new Date(entry.startTime).getTime()) / 1000);
-      }
+    const weekTime = userEntries
+      .filter(e => e.startTime >= startOfWeek)
+      .reduce((sum, e) => sum + (e.duration || 0), 0);
 
-      if (entryDate >= todayStart) {
-        todayTime += duration;
-      }
-      if (entryDate >= weekStart) {
-        weekTime += duration;
-      }
-      if (entryDate >= monthStart) {
-        monthTime += duration;
-      }
-    }
+    const monthTime = userEntries
+      .filter(e => e.startTime >= startOfMonth)
+      .reduce((sum, e) => sum + (e.duration || 0), 0);
 
-    const activeTasks = tasks.filter(task => task.isActive).length;
-    const runningEntries = entries.filter(entry => entry.isRunning).length;
-
-    // Calculate overdue tasks
-    const overdueTasks = tasks.filter(task => 
-      task.isActive && 
-      task.deadline && 
-      new Date(task.deadline) < now
-    ).length;
-
-    // Calculate over time tasks
-    const overTimeTasks = tasks.filter(task => {
-      if (!task.isActive || !task.estimatedHours) return false;
-      
-      const taskEntries = entries.filter(entry => entry.taskId === task.id);
-      const totalTime = taskEntries.reduce((sum, entry) => {
-        let duration = entry.duration || 0;
-        if (entry.isRunning && entry.startTime) {
-          duration = Math.floor((Date.now() - new Date(entry.startTime).getTime()) / 1000);
-        }
-        return sum + duration;
-      }, 0);
-      
-      return totalTime > (task.estimatedHours * 3600);
-    }).length;
-
-    // Calculate tasks due today
-    const today = new Date();
-    const todayStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    
-    const dueTodayTasks = tasks.filter(task => 
-      task.isActive && 
-      task.deadline && 
-      new Date(task.deadline) >= todayStartDate && 
-      new Date(task.deadline) < todayEnd
-    ).length;
-
-    // Calculate tasks due tomorrow
-    const tomorrowStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    const tomorrowEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
-    
-    const dueTomorrowTasks = tasks.filter(task => 
-      task.isActive && 
-      task.deadline && 
-      new Date(task.deadline) >= tomorrowStart && 
-      new Date(task.deadline) < tomorrowEnd
-    ).length;
-
-    // Calculate tasks nearing 80% time limit
-    const nearingLimitTasks = tasks.filter(task => {
-      if (!task.isActive || !task.estimatedHours) return false;
-      
-      const taskEntries = entries.filter(entry => entry.taskId === task.id);
-      const totalTime = taskEntries.reduce((sum, entry) => {
-        let duration = entry.duration || 0;
-        if (entry.isRunning && entry.startTime) {
-          duration = Math.floor((Date.now() - new Date(entry.startTime).getTime()) / 1000);
-        }
-        return sum + duration;
-      }, 0);
-      
-      const timeLimit = task.estimatedHours * 3600;
-      return totalTime >= (timeLimit * 0.8) && totalTime <= timeLimit;
-    }).length;
+    const activeTasks = userTasks.filter(t => t.isActive).length;
+    const completedTasks = userTasks.filter(t => t.isCompleted).length;
 
     return {
       todayTime,
       activeTasks,
       weekTime,
       monthTime,
-      completedTasks: tasks.filter(task => !task.isActive).length,
-      overdueTasks,
-      overTimeTasks,
-      dueTodayTasks,
-      dueTomorrowTasks,
-      nearingLimitTasks,
+      completedTasks,
+      overdueTasks: 0,
+      overTimeTasks: 0,
+      dueTodayTasks: 0,
+      dueTomorrowTasks: 0,
+      nearingLimitTasks: 0
     };
   }
 
-  async getTimeByTask(startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>> {
-    const entries = Array.from(this.timeEntries.values());
-    const taskTimeMap = new Map<number, number>();
-
-    for (const entry of entries) {
-      const entryDate = new Date(entry.createdAt);
-      
-      if (startDate && entryDate < startDate) continue;
-      if (endDate && entryDate > endDate) continue;
-
-      let duration = entry.duration || 0;
-      if (entry.isRunning && entry.startTime) {
-        duration = Math.floor((Date.now() - new Date(entry.startTime).getTime()) / 1000);
-      }
-
-      const currentTime = taskTimeMap.get(entry.taskId) || 0;
-      taskTimeMap.set(entry.taskId, currentTime + duration);
-    }
-
-    const result: Array<{ task: Task; totalTime: number }> = [];
-    for (const [taskId, totalTime] of Array.from(taskTimeMap.entries())) {
-      const task = this.tasks.get(taskId);
-      if (task && task.isActive) {
-        result.push({ task, totalTime });
-      }
-    }
-
-    return result.sort((a, b) => b.totalTime - a.totalTime);
+  async getTimeByTask(userId: number, startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>> {
+    return [];
   }
 
-  async getDailyStats(startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>> {
-    const entries = Array.from(this.timeEntries.values());
-    const dailyMap = new Map<string, number>();
-
-    for (const entry of entries) {
-      const entryDate = new Date(entry.createdAt);
-      
-      if (entryDate < startDate || entryDate > endDate) continue;
-
-      const dateKey = entryDate.toISOString().split('T')[0];
-      let duration = entry.duration || 0;
-      
-      if (entry.isRunning && entry.startTime) {
-        duration = Math.floor((Date.now() - new Date(entry.startTime).getTime()) / 1000);
-      }
-
-      const currentTime = dailyMap.get(dateKey) || 0;
-      dailyMap.set(dateKey, currentTime + duration);
-    }
-
-    const result: Array<{ date: string; totalTime: number }> = [];
-    for (const [date, totalTime] of Array.from(dailyMap.entries())) {
-      result.push({ date, totalTime });
-    }
-
-    return result.sort((a, b) => a.date.localeCompare(b.date));
+  async getDailyStats(userId: number, startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>> {
+    return [];
   }
 
-  // WhatsApp Integration methods - implementação completa em memória
+  // Migration methods
+  async migrateOrphanTasks(userId: number, projectId: number): Promise<number> {
+    let count = 0;
+    for (const task of Array.from(this.tasks.values())) {
+      if (task.userId === userId && !task.projectId) {
+        task.projectId = projectId;
+        this.tasks.set(task.id, task);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // WhatsApp Integration methods - Adjusted to new Schema
   async getWhatsappIntegration(): Promise<WhatsappIntegration | undefined> {
     return this.whatsappIntegration;
   }
@@ -625,10 +592,15 @@ export class MemStorage implements IStorage {
       id: 1,
       instanceName: integration.instanceName || '',
       apiKey: integration.apiKey || '',
-      baseUrl: integration.baseUrl || '',
-      authorizedNumbers: integration.authorizedNumbers || [],
+      apiUrl: integration.apiUrl || '',
+      phoneNumber: integration.phoneNumber || '',
+      webhookUrl: integration.webhookUrl || null,
+      authorizedNumbers: integration.authorizedNumbers || null,
       restrictToNumbers: integration.restrictToNumbers ?? true,
+      allowedGroupJid: integration.allowedGroupJid || null,
+      responseMode: integration.responseMode || 'individual',
       isActive: integration.isActive ?? true,
+      lastConnection: null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -660,12 +632,9 @@ export class MemStorage implements IStorage {
     const whatsappLog: WhatsappLog = {
       id: this.currentWhatsappLogId++,
       integrationId: log.integrationId,
-      eventType: log.eventType,
-      phoneNumber: log.phoneNumber || '',
-      messageText: log.messageText || '',
-      responseText: log.responseText || '',
-      success: log.success ?? true,
-      errorMessage: log.errorMessage || '',
+      logType: log.logType,
+      message: log.message,
+      metadata: log.metadata || null,
       timestamp: new Date()
     };
     this.whatsappLogs.set(whatsappLog.id, whatsappLog);
@@ -676,10 +645,11 @@ export class MemStorage implements IStorage {
     const logs = Array.from(this.whatsappLogs.values())
       .filter(log => log.integrationId === integrationId)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-    
+
     return limit ? logs.slice(0, limit) : logs;
   }
 
+  // Notification Settings methods - Adjusted to new Schema
   async getNotificationSettings(): Promise<NotificationSettings | undefined> {
     return this.notificationSettings;
   }
@@ -687,10 +657,14 @@ export class MemStorage implements IStorage {
   async createNotificationSettings(settings: InsertNotificationSettings): Promise<NotificationSettings> {
     const notificationSettings: NotificationSettings = {
       id: 1,
-      notificationsEnabled: settings.notificationsEnabled ?? true,
-      dailyReminderTime: settings.dailyReminderTime || '09:00:00',
-      weeklyReportEnabled: settings.weeklyReportEnabled ?? true,
-      deadlineNotifications: settings.deadlineNotifications ?? true,
+      enableDailyReport: settings.enableDailyReport ?? false,
+      dailyReportTime: settings.dailyReportTime || '18:00',
+      enableWeeklyReport: settings.enableWeeklyReport ?? false,
+      weeklyReportDay: settings.weeklyReportDay ?? 5,
+      enableDeadlineReminders: settings.enableDeadlineReminders ?? true,
+      reminderHoursBefore: settings.reminderHoursBefore ?? 24,
+      enableTimerReminders: settings.enableTimerReminders ?? false,
+      timerReminderInterval: settings.timerReminderInterval ?? 120,
       createdAt: new Date(),
       updatedAt: new Date()
     };

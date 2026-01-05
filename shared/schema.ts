@@ -22,6 +22,49 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// ===== NOVAS TABELAS PARA TIMES E PROJETOS =====
+
+export const teams = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const teamMembers = pgTable("team_members", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+});
+
+export const teamManagers = pgTable("team_managers", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+});
+
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isPersonal: boolean("is_personal").notNull().default(false),
+  ownerId: integer("owner_id").references(() => users.id), // Para projetos pessoais
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const projectTeams = pgTable("project_teams", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+});
+
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -36,6 +79,7 @@ export const tasks = pgTable("tasks", {
   // Campo obrigatório para identificar origem da tarefa
   source: text("source").notNull(), // "sistema" ou nome do sistema externo
   userId: integer("user_id").notNull().references(() => users.id), // usuário que criou
+  projectId: integer("project_id").references(() => projects.id), // FK para projetos (nullable por enquanto para migração)
 });
 
 export const taskItems = pgTable("task_items", {
@@ -149,6 +193,7 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   isActive: z.boolean().optional().default(true),
   source: z.string().min(1, "Origem da tarefa é obrigatória"), // obrigatório
   userId: z.number().min(1, "ID do usuário é obrigatório"),
+  projectId: z.number().optional().nullable(), // FK opcional
 });
 
 export const insertTaskItemSchema = createInsertSchema(taskItems).omit({
@@ -181,29 +226,38 @@ export const updateTimeEntrySchema = createInsertSchema(timeEntries).omit({
   }),
 }).partial();
 
-// User types
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+// ===== SCHEMAS ZOD PARA TIMES E PROJETOS =====
 
-export type InsertTask = z.infer<typeof insertTaskSchema>;
-export type Task = typeof tasks.$inferSelect;
+export const insertTeamSchema = createInsertSchema(teams).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(1, "Nome do time é obrigatório"),
+});
 
-export type InsertTaskItem = z.infer<typeof insertTaskItemSchema>;
-export type TaskItem = typeof taskItems.$inferSelect;
+export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
+  id: true,
+  joinedAt: true,
+});
 
-export type InsertTimeEntry = z.infer<typeof insertTimeEntrySchema>;
-export type TimeEntry = typeof timeEntries.$inferSelect;
-export type UpdateTimeEntry = z.infer<typeof updateTimeEntrySchema>;
+export const insertTeamManagerSchema = createInsertSchema(teamManagers).omit({
+  id: true,
+  assignedAt: true,
+});
 
-export interface TimeEntryWithTask extends TimeEntry {
-  task: Task;
-}
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(1, "Nome do projeto é obrigatório"),
+});
 
-export interface TaskWithStats extends Task {
-  totalTime: number;
-  activeEntries: number;
-  items?: TaskItem[];
-}
+export const insertProjectTeamSchema = createInsertSchema(projectTeams).omit({
+  id: true,
+  assignedAt: true,
+});
 
 // Schemas para WhatsApp Integration
 export const insertWhatsappIntegrationSchema = createInsertSchema(whatsappIntegrations).omit({
@@ -241,7 +295,45 @@ export const insertNotificationSettingsSchema = createInsertSchema(notificationS
   timerReminderInterval: z.number().min(5).max(480), // 5 min a 8 horas
 });
 
-// Types para WhatsApp
+// Tipos para exportação
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type Task = typeof tasks.$inferSelect;
+
+export type InsertTaskItem = z.infer<typeof insertTaskItemSchema>;
+export type TaskItem = typeof taskItems.$inferSelect;
+
+export type InsertTimeEntry = z.infer<typeof insertTimeEntrySchema>;
+export type TimeEntry = typeof timeEntries.$inferSelect;
+export type UpdateTimeEntry = z.infer<typeof updateTimeEntrySchema>;
+
+export interface TimeEntryWithTask extends TimeEntry {
+  task: Task;
+}
+
+export interface TaskWithStats extends Task {
+  totalTime: number;
+  activeEntries: number;
+  items?: TaskItem[];
+}
+
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
+
+export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
+export type TeamMember = typeof teamMembers.$inferSelect;
+
+export type InsertTeamManager = z.infer<typeof insertTeamManagerSchema>;
+export type TeamManager = typeof teamManagers.$inferSelect;
+
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Project = typeof projects.$inferSelect;
+
+export type InsertProjectTeam = z.infer<typeof insertProjectTeamSchema>;
+export type ProjectTeam = typeof projectTeams.$inferSelect;
+
 export type InsertWhatsappIntegration = z.infer<typeof insertWhatsappIntegrationSchema>;
 export type WhatsappIntegration = typeof whatsappIntegrations.$inferSelect;
 

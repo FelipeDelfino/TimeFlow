@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Clock, BarChart3, Timer, ListTodo, History, Smartphone, Users } from "lucide-react";
+import { Clock, BarChart3, Timer, ListTodo, History, Smartphone, Users, Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -9,7 +9,8 @@ const baseNavigation = [
   { name: "Controle de Tempo", href: "/timer", icon: Timer },
   { name: "Relatórios", href: "/reports", icon: BarChart3 },
   { name: "Histórico", href: "/history", icon: History },
-  { name: "WhatsApp", href: "/whatsapp", icon: Smartphone },
+  // { name: "WhatsApp", href: "/whatsapp", icon: Smartphone },
+  { name: "Gerenciar Times", href: "/teams", icon: Briefcase },
 ];
 
 const adminNavigation = [

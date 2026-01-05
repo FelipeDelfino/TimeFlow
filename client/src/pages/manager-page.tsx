@@ -1,14 +1,14 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, RefreshCw, Key, UserPlus, Users, Mail } from "lucide-react";
+import { Trash2, Plus, RefreshCw, Key, UserPlus, Users, Mail, Shield, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
+// Update interface
 interface User {
   id: number;
   username: string;
@@ -28,7 +36,7 @@ interface User {
   mustResetPassword: boolean;
   lastLogin: string | null;
   createdAt: string;
-  updatedAt: string;
+  managedTeams?: Array<{ id: number; name: string }>;
 }
 
 interface CreateUserForm {
@@ -40,7 +48,10 @@ interface CreateUserForm {
 
 export default function ManagerPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isManageTeamsOpen, setIsManageTeamsOpen] = useState(false);
+  const [selectedUserForTeams, setSelectedUserForTeams] = useState<User | null>(null);
   const [createForm, setCreateForm] = useState<CreateUserForm>({
     username: '',
     email: '',
@@ -139,6 +150,27 @@ export default function ManagerPage() {
     },
   });
 
+  // Atualizar Role
+  const updateUserRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: number; role: 'admin' | 'user' }) => {
+      const response = await apiRequest('PATCH', `/api/admin/users/${userId}/role`, { role });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Papel atualizado com sucesso",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erro ao atualizar papel",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateUser = () => {
     if (!createForm.username || !createForm.email || !createForm.fullName) {
       toast({
@@ -195,6 +227,28 @@ export default function ManagerPage() {
                   <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
                     {user.role === 'admin' ? 'Administrador' : 'Usuário'}
                   </Badge>
+
+                  {/* Badge de Gestor com Tooltip */}
+                  {user.managedTeams && user.managedTeams.length > 0 && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 cursor-help">
+                            Gestor (+{user.managedTeams.length})
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="font-semibold mb-1">Gerencia os times:</p>
+                          <ul className="list-disc pl-4 text-xs">
+                            {user.managedTeams.map(t => (
+                              <li key={t.id}>{t.name}</li>
+                            ))}
+                          </ul>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+
                   <Badge variant={user.isActive ? 'default' : 'destructive'}>
                     {user.isActive ? 'Ativo' : 'Inativo'}
                   </Badge>
@@ -206,19 +260,44 @@ export default function ManagerPage() {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => {
+                      setSelectedUserForTeams(user);
+                      setIsManageTeamsOpen(true);
+                    }}
+                    title="Gerenciar Times do Usuário"
+                  >
+                    <Briefcase className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateUserRoleMutation.mutate({
+                      userId: user.id,
+                      role: user.role === 'admin' ? 'user' : 'admin'
+                    })}
+                    disabled={updateUserRoleMutation.isPending}
+                    title={user.role === 'admin' ? 'Remover Admin' : 'Tornar Admin'}
+                  >
+                    <Shield className={`h-4 w-4 ${user.role === 'admin' ? 'text-green-600' : 'text-gray-400'}`} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => resetPasswordMutation.mutate(user.id)}
                     disabled={resetPasswordMutation.isPending}
+                    title="Resetar Senha"
                   >
                     <Key className="h-4 w-4" />
                   </Button>
                   <Button
                     variant={user.isActive ? "destructive" : "default"}
                     size="sm"
-                    onClick={() => toggleActiveMutation.mutate({ 
-                      userId: user.id, 
-                      isActive: !user.isActive 
+                    onClick={() => toggleActiveMutation.mutate({
+                      userId: user.id,
+                      isActive: !user.isActive
                     })}
                     disabled={toggleActiveMutation.isPending}
+                    title={user.isActive ? 'Desativar Usuário' : 'Ativar Usuário'}
                   >
                     {user.isActive ? 'Desativar' : 'Ativar'}
                   </Button>
@@ -227,6 +306,7 @@ export default function ManagerPage() {
                     size="sm"
                     onClick={() => deleteUserMutation.mutate(user.id)}
                     disabled={deleteUserMutation.isPending}
+                    title="Excluir Usuário"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -246,7 +326,7 @@ export default function ManagerPage() {
                 <div>
                   <p className="text-muted-foreground">Último Login</p>
                   <p className="font-medium">
-                    {user.lastLogin 
+                    {user.lastLogin
                       ? new Date(user.lastLogin).toLocaleDateString('pt-BR')
                       : 'Nunca'
                     }
@@ -264,21 +344,23 @@ export default function ManagerPage() {
         ))}
       </div>
 
-      {users.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum usuário encontrado</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Crie o primeiro usuário para começar a gerenciar o sistema.
-            </p>
-            <Button onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Criar Primeiro Usuário
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {
+        users.length === 0 && (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Users className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Nenhum usuário encontrado</h3>
+              <p className="text-muted-foreground text-center mb-4">
+                Crie o primeiro usuário para começar a gerenciar o sistema.
+              </p>
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Primeiro Usuário
+              </Button>
+            </CardContent>
+          </Card>
+        )
+      }
 
       {/* Dialog para criar usuário */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -289,7 +371,7 @@ export default function ManagerPage() {
               Um email com as credenciais será enviado automaticamente para o usuário.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="username">Username *</Label>
@@ -300,7 +382,7 @@ export default function ManagerPage() {
                 placeholder="Digite o username"
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="email">Email *</Label>
               <Input
@@ -311,7 +393,7 @@ export default function ManagerPage() {
                 placeholder="Digite o email"
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="fullName">Nome Completo *</Label>
               <Input
@@ -321,12 +403,12 @@ export default function ManagerPage() {
                 placeholder="Digite o nome completo"
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="role">Tipo de Usuário</Label>
-              <Select 
-                value={createForm.role} 
-                onValueChange={(value: 'admin' | 'user') => 
+              <Select
+                value={createForm.role}
+                onValueChange={(value: 'admin' | 'user') =>
                   setCreateForm(prev => ({ ...prev, role: value }))
                 }
               >
@@ -340,15 +422,15 @@ export default function ManagerPage() {
               </Select>
             </div>
           </div>
-          
+
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setIsCreateDialogOpen(false)}
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleCreateUser}
               disabled={createUserMutation.isPending}
             >
@@ -361,6 +443,102 @@ export default function ManagerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {selectedUserForTeams && (
+        <ManageTeamsDialog
+          isOpen={isManageTeamsOpen}
+          onClose={() => setIsManageTeamsOpen(false)}
+          user={selectedUserForTeams}
+        />
+      )}
+    </div >
+  );
+}
+
+function ManageTeamsDialog({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: User }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient(); // Ensure queryClient is available
+  const [selectedTeams, setSelectedTeams] = useState<number[]>([]);
+
+  // Fetch all teams
+  const { data: teams } = useQuery<any[]>({
+    queryKey: ['/api/teams'],
+    enabled: isOpen
+  });
+
+  // Fetch user's managed teams
+  const { data: managedTeamIds, isLoading: isLoadingManaged } = useQuery<number[]>({
+    queryKey: [`/api/users/${user.id}/managed-teams`],
+    enabled: isOpen,
+  });
+
+  // Sync state when managed items load
+  useEffect(() => {
+    if (managedTeamIds) {
+      setSelectedTeams(managedTeamIds);
+    } else {
+      setSelectedTeams([]);
+    }
+  }, [managedTeamIds, isOpen, user.id]);
+
+  const updateManagedTeamsMutation = useMutation({
+    mutationFn: async (teamIds: number[]) => {
+      await apiRequest('PUT', `/api/users/${user.id}/managed-teams`, { teamIds });
+    },
+    onSuccess: () => {
+      toast({ title: "Times atualizados", description: "As permissões de gestor foram salvas." });
+      queryClient.invalidateQueries({ queryKey: [`/api/users/${user.id}/managed-teams`] });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao salvar permissões.", variant: "destructive" });
+    }
+  });
+
+  const toggleTeam = (teamId: number) => {
+    setSelectedTeams(prev =>
+      prev.includes(teamId)
+        ? prev.filter(id => id !== teamId)
+        : [...prev, teamId]
+    );
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Gerenciar Times de {user.fullName}</DialogTitle>
+          <DialogDescription>
+            Selecione os times que este usuário deve gerenciar.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+          {isLoadingManaged ? (
+            <div className="flex justify-center p-4"><RefreshCw className="animate-spin" /></div>
+          ) : (
+            teams?.map(team => (
+              <div key={team.id} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`team-${team.id}`}
+                  checked={selectedTeams.includes(team.id)}
+                  onCheckedChange={() => toggleTeam(team.id)}
+                />
+                <Label htmlFor={`team-${team.id}`}>{team.name}</Label>
+              </div>
+            ))
+          )}
+          {teams?.length === 0 && <p className="text-gray-500 text-center">Nenhum time disponível.</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={() => updateManagedTeamsMutation.mutate(selectedTeams)}
+            disabled={updateManagedTeamsMutation.isPending}
+          >
+            Salvar Alterações
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
