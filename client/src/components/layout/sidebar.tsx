@@ -9,7 +9,7 @@ const baseNavigation = [
   { name: "Controle de Tempo", href: "/timer", icon: Timer },
   { name: "Relatórios", href: "/reports", icon: BarChart3 },
   { name: "Histórico", href: "/history", icon: History },
-  // { name: "WhatsApp", href: "/whatsapp", icon: Smartphone },
+  { name: "WhatsApp", href: "/whatsapp", icon: Smartphone },
   { name: "Gerenciar Times", href: "/teams", icon: Briefcase },
 ];
 

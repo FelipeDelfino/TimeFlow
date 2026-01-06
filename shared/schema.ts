@@ -193,7 +193,7 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   isActive: z.boolean().optional().default(true),
   source: z.string().min(1, "Origem da tarefa é obrigatória"), // obrigatório
   userId: z.number().min(1, "ID do usuário é obrigatório"),
-  projectId: z.number().optional().nullable(), // FK opcional
+  projectId: z.number().min(1, "Projeto é obrigatório"), // FK obrigatória
 });
 
 export const insertTaskItemSchema = createInsertSchema(taskItems).omit({

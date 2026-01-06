@@ -63,7 +63,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
       isActive: true,
       source: "sistema",
       userId: 0,
-      projectId: null,
+      projectId: undefined,
     },
   });
 
@@ -78,28 +78,32 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
         description: task.description || "",
         color: task.color,
         isActive: task.isActive,
-        estimatedHours: task.estimatedHours ? Math.round(task.estimatedHours * 60) : null,
+        estimatedHours: task.estimatedHours ? Math.round(task.estimatedHours * 60) : undefined,
         deadline: deadlineValue as any,
         source: task.source,
         userId: task.userId,
-        projectId: task.projectId,
+        projectId: task.projectId || undefined, // Handle null project from DB
       });
       setSelectedColor(task.color);
     } else {
+      // Find personal project to set as default
+      const personalProject = projects?.find(p => p.isPersonal);
+      const defaultProjectId = personalProject?.id || (projects && projects.length > 0 ? projects[0].id : undefined);
+
       form.reset({
         name: "",
         description: "",
         color: "#3B82F6",
         isActive: true,
-        estimatedHours: null,
+        estimatedHours: undefined, // Use undefined instead of null
         deadline: "" as any,
         source: "sistema",
         userId: user?.id || 0,
-        projectId: null,
+        projectId: defaultProjectId,
       });
       setSelectedColor("#3B82F6");
     }
-  }, [task, form, user]);
+  }, [task, form, user, projects]);
 
   const createTaskMutation = useMutation({
     mutationFn: (data: InsertTask) => apiRequest("POST", "/api/tasks", data),

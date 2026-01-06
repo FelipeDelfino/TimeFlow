@@ -31,7 +31,7 @@ function AuthenticatedRoutes() {
         <Route path="/timer" component={Timer} />
         <Route path="/reports" component={Reports} />
         <Route path="/history" component={History} />
-        {/* <Route path="/whatsapp" component={WhatsAppPage} /> */}
+        <Route path="/whatsapp" component={WhatsAppPage} />
         <Route path="/manager" component={ManagerPage} />
         <Route component={NotFound} />
       </Switch>

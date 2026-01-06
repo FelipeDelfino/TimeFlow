@@ -1,10 +1,57 @@
 import { Express } from "express";
 import { storage } from "./storage";
 import { insertProjectSchema, insertProjectTeamSchema } from "@shared/schema";
-import { authenticateAny } from "./auth-middleware";
+import { authenticateAny, authenticateAdmin } from "./auth-middleware";
 import { z } from "zod";
 
 export function registerProjectRoutes(app: Express) {
+    // Admin route to fix missing personal projects and orphan tasks
+    app.post("/api/admin/fix-projects", authenticateAdmin, async (req: any, res) => {
+        try {
+            const users = await storage.getAllUsers();
+            const results = {
+                usersProcessed: 0,
+                projectsCreated: 0,
+                tasksMigrated: 0
+            };
+
+            for (const user of users) {
+                // Check if user has personal project
+                let personalProject = await storage.getUserPersonalProject(user.id);
+
+                if (!personalProject) {
+                    console.log(`Creating personal project for user ${user.username}`);
+                    // Create one if missing
+                    personalProject = await storage.createProject({
+                        name: `Projeto Pessoal - ${user.fullName.split(' ')[0]}`,
+                        description: "Seu espaço para tarefas pessoais e privadas",
+                        isPersonal: true,
+                        ownerId: user.id,
+                        isActive: true
+                    });
+                    results.projectsCreated++;
+                }
+
+                // Migrate orphan tasks
+                const migratedCount = await storage.migrateOrphanTasks(user.id, personalProject.id);
+                if (migratedCount > 0) {
+                    console.log(`Migrated ${migratedCount} tasks for user ${user.username}`);
+                }
+
+                results.tasksMigrated += migratedCount;
+                results.usersProcessed++;
+            }
+
+            res.json({
+                message: "Migration completed successfully",
+                stats: results
+            });
+        } catch (error) {
+            console.error("Migration error:", error);
+            res.status(500).json({ message: "Error executing migration" });
+        }
+    });
+
     // Get user's projects (Personal + Team projects)
     app.get("/api/projects", authenticateAny, async (req: any, res) => {
         try {
@@ -110,4 +157,26 @@ export function registerProjectRoutes(app: Express) {
             res.status(500).json({ message: "Error binding project to team" });
         }
     });
+
+    // Delete project (Admin or Owner)
+    app.delete("/api/projects/:id", authenticateAny, async (req: any, res) => {
+        try {
+            const projectId = parseInt(req.params.id);
+            const project = await storage.getProject(projectId);
+
+            if (!project) return res.status(404).json({ message: "Project not found" });
+
+            // Check ownership or admin
+            if (project.ownerId !== req.user.id && req.user.role !== 'admin') {
+                return res.status(403).json({ message: "Access denied" });
+            }
+
+            // Soft delete - mark as inactive
+            const updated = await storage.updateProject(projectId, { isActive: false });
+            res.json({ message: "Project deleted successfully" });
+        } catch (error) {
+            res.status(500).json({ message: "Error deleting project" });
+        }
+    });
 }
+
