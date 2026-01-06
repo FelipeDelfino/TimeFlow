@@ -134,6 +134,9 @@ export async function createUserWithDefaults(
 ) {
   const hashedPassword = await hashPassword(password);
 
+  // Gerar Recovery Key (Ex: REC-XXXX-XXXX)
+  const recoveryKey = `REC-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
   const userData = {
     username,
     password: hashedPassword,
@@ -141,7 +144,8 @@ export async function createUserWithDefaults(
     fullName,
     role,
     isActive: true,
-    mustResetPassword
+    mustResetPassword,
+    recoveryKey // Passar para o storage
   };
 
   const user = await storage.createUser(userData);
@@ -156,7 +160,7 @@ export async function createUserWithDefaults(
     isActive: true
   });
 
-  return { ...user, apiKey };
+  return { ...user, apiKey, recoveryKey }; // Retornar recoveryKey para quem chamou
 }
 
 export async function createUserByAdmin(

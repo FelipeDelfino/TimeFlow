@@ -49,21 +49,8 @@ interface CreateUserForm {
 export default function ManagerPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isManageTeamsOpen, setIsManageTeamsOpen] = useState(false);
-  const [selectedUserForTeams, setSelectedUserForTeams] = useState<User | null>(null);
-  const [createForm, setCreateForm] = useState<CreateUserForm>({
-    username: '',
-    email: '',
-    fullName: '',
-    role: 'user'
-  });
-
-  // Buscar todos os usuários
-  const { data: users = [], isLoading, refetch } = useQuery<User[]>({
-    queryKey: ['/api/admin/users'],
-    retry: false,
-  });
+  const [showCredentialsDialog, setShowCredentialsDialog] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{ username: string, password: string, recoveryKey?: string } | null>(null);
 
   // Criar usuário
   const createUserMutation = useMutation({
@@ -71,14 +58,16 @@ export default function ManagerPage() {
       const response = await apiRequest('POST', '/api/admin/users', userData);
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Usuário criado com sucesso",
-        description: "As credenciais foram enviadas por email.",
+    onSuccess: (data) => {
+      setCreatedCredentials({
+        username: data.username,
+        password: data.temporaryPassword,
+        recoveryKey: data.recoveryKey
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       setIsCreateDialogOpen(false);
+      setShowCredentialsDialog(true);
       setCreateForm({ username: '', email: '', fullName: '', role: 'user' });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
     },
     onError: (error: Error) => {
       toast({
@@ -89,6 +78,25 @@ export default function ManagerPage() {
     },
   });
 
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copiado!",
+      description: `${label} copiado para a área de transferência.`,
+      variant: "success",
+    });
+  };
+
+  const copyAllCredentials = () => {
+    if (!createdCredentials) return;
+    const text = `TimeFlow - Credenciais de Acesso
+Username: ${createdCredentials.username}
+Senha Temporária: ${createdCredentials.password}
+Chave de Recuperação: ${createdCredentials.recoveryKey || 'Não gerada'}`;
+
+    copyToClipboard(text, "Credenciais");
+  };
+
   // Deletar usuário
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: number) => {
@@ -97,6 +105,7 @@ export default function ManagerPage() {
     onSuccess: () => {
       toast({
         title: "Usuário deletado com sucesso",
+        variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
     },
@@ -118,6 +127,7 @@ export default function ManagerPage() {
       toast({
         title: "Email de reset enviado",
         description: "O usuário receberá instruções para criar nova senha.",
+        variant: "success",
       });
     },
     onError: (error: Error) => {
@@ -138,6 +148,7 @@ export default function ManagerPage() {
     onSuccess: () => {
       toast({
         title: "Status atualizado com sucesso",
+        variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
     },
@@ -159,6 +170,7 @@ export default function ManagerPage() {
     onSuccess: () => {
       toast({
         title: "Papel atualizado com sucesso",
+        variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
     },
@@ -368,7 +380,7 @@ export default function ManagerPage() {
           <DialogHeader>
             <DialogTitle>Criar Novo Usuário</DialogTitle>
             <DialogDescription>
-              Um email com as credenciais será enviado automaticamente para o usuário.
+              As credenciais serão exibidas na tela após a criação. O envio de email está desativado.
             </DialogDescription>
           </DialogHeader>
 
@@ -437,8 +449,99 @@ export default function ManagerPage() {
               {createUserMutation.isPending && (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
               )}
-              <Mail className="h-4 w-4 mr-2" />
-              Criar e Enviar Email
+              <UserPlus className="h-4 w-4 mr-2" />
+              Criar Usuário
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Exibição de Credenciais */}
+      <Dialog open={showCredentialsDialog} onOpenChange={setShowCredentialsDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Usuário Criado com Sucesso</DialogTitle>
+            <DialogDescription>
+              Copie as credenciais abaixo e entregue ao usuário. Elas não serão exibidas novamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdCredentials && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3 border">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Username</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 p-2 bg-background rounded border font-mono text-sm">
+                      {createdCredentials.username}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => copyToClipboard(createdCredentials.username, "Username")}
+                    >
+                      <Plus className="h-4 w-4 rotate-45" /> {/* Use plus rotated as copy fallback or just use text "Copiar" if icon missing */}
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">Senha Temporária</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 p-2 bg-background rounded border font-mono text-sm">
+                      {createdCredentials.password}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => copyToClipboard(createdCredentials.password, "Senha")}
+                    >
+                      <Plus className="h-4 w-4 rotate-45" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground text-orange-600 dark:text-orange-400 font-bold">Chave de Recuperação (Importante)</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded font-mono text-sm break-all">
+                      {createdCredentials.recoveryKey || "N/A"}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => copyToClipboard(createdCredentials.recoveryKey || "", "Chave")}
+                    >
+                      <Plus className="h-4 w-4 rotate-45" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Esta chave é a única forma de recuperar a conta caso esqueça a senha. Guarde-a em local seguro.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1 mr-2"
+              onClick={copyAllCredentials}
+            >
+              <Briefcase className="h-4 w-4 mr-2" /> {/* Use briefcase as "Copy All" icon fallback */}
+              Copiar Tudo
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setShowCredentialsDialog(false)}
+              className="flex-1"
+            >
+              Concluir
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -486,7 +589,7 @@ function ManageTeamsDialog({ isOpen, onClose, user }: { isOpen: boolean; onClose
       await apiRequest('PUT', `/api/users/${user.id}/managed-teams`, { teamIds });
     },
     onSuccess: () => {
-      toast({ title: "Times atualizados", description: "As permissões de gestor foram salvas." });
+      toast({ title: "Times atualizados", description: "As permissões de gestor foram salvas.", variant: "success" });
       queryClient.invalidateQueries({ queryKey: [`/api/users/${user.id}/managed-teams`] });
       onClose();
     },

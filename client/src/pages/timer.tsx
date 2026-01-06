@@ -14,6 +14,7 @@ import { formatDuration } from "@/lib/timer-utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { TaskWithStats, TimeEntryWithTask, InsertTimeEntry } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Timer() {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -24,8 +25,9 @@ export default function Timer() {
   const [manualStartTime, setManualStartTime] = useState("09:00");
   const [manualNotes, setManualNotes] = useState("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
-  
+
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const { data: tasks, isLoading: tasksLoading } = useQuery<TaskWithStats[]>({
     queryKey: ["/api/tasks"],
@@ -47,6 +49,7 @@ export default function Timer() {
       toast({
         title: "Tempo adicionado",
         description: "O tempo foi adicionado com sucesso à atividade.",
+        variant: "success",
       });
       setManualEntryOpen(false);
       setManualHours("");
@@ -78,7 +81,7 @@ export default function Timer() {
     const durationHours = parseInt(manualHours) || 0;
     const durationMinutes = parseInt(manualMinutes) || 0;
     const totalMinutes = durationHours * 60 + durationMinutes;
-    
+
     if (totalMinutes <= 0) {
       toast({
         title: "Erro",
@@ -91,10 +94,10 @@ export default function Timer() {
     // Calcular horário de início usando a hora informada pelo usuário
     const [startHours, startMinutes] = manualStartTime.split(':').map(Number);
     const selectedDate = new Date(manualDate + 'T00:00:00-03:00');
-    
+
     const startTime = new Date(selectedDate);
     startTime.setHours(startHours, startMinutes, 0, 0);
-    
+
     const endTime = new Date(startTime.getTime() + totalMinutes * 60 * 1000);
 
     const entry: InsertTimeEntry = {
@@ -104,6 +107,7 @@ export default function Timer() {
       duration: totalMinutes * 60,
       isRunning: false,
       notes: manualNotes || null,
+      userId: user?.id || 0,
     };
 
     addManualEntryMutation.mutate(entry);
@@ -140,7 +144,7 @@ export default function Timer() {
   return (
     <div className="p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-6">Controle de Tempo</h3>
-      
+
       {/* Status de conectividade */}
       {runningError && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -152,7 +156,7 @@ export default function Timer() {
           </div>
         </div>
       )}
-      
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Timer Controls */}
         <Card>
@@ -243,7 +247,7 @@ export default function Timer() {
                       <Button variant="outline" onClick={() => setManualEntryOpen(false)}>
                         Cancelar
                       </Button>
-                      <Button 
+                      <Button
                         onClick={handleManualEntry}
                         disabled={addManualEntryMutation.isPending}
                       >
@@ -256,14 +260,14 @@ export default function Timer() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-0">
-            
+
             {/* Task Selection */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Selecionar Atividade
               </label>
-              <Select 
-                value={selectedTaskId?.toString() || ""} 
+              <Select
+                value={selectedTaskId?.toString() || ""}
                 onValueChange={(value) => setSelectedTaskId(parseInt(value))}
               >
                 <SelectTrigger>
@@ -273,8 +277,8 @@ export default function Timer() {
                   {tasks?.filter(task => !task.isCompleted).map((task) => (
                     <SelectItem key={task.id} value={task.id.toString()}>
                       <div className="flex items-center">
-                        <div 
-                          className="w-3 h-3 rounded-full mr-2" 
+                        <div
+                          className="w-3 h-3 rounded-full mr-2"
                           style={{ backgroundColor: task.color }}
                         />
                         {task.name}
@@ -326,12 +330,12 @@ export default function Timer() {
         <Card>
           <CardContent className="p-6">
             <h4 className="text-lg font-semibold text-gray-900 mb-4">Sessões Ativas</h4>
-            
+
             {runningEntries && runningEntries.length > 0 ? (
               <div className="space-y-3">
                 {runningEntries.map((entry) => (
-                  <div 
-                    key={entry.id} 
+                  <div
+                    key={entry.id}
                     className="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded-lg"
                   >
                     <div>
@@ -341,7 +345,7 @@ export default function Timer() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <TimerDisplay 
+                      <TimerDisplay
                         startTime={entry.startTime}
                         endTime={entry.endTime}
                         duration={entry.duration}

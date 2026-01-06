@@ -23,6 +23,12 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 interface ProjectModalProps {
     project?: Project | null;
@@ -72,6 +78,7 @@ export default function ProjectModal({ project, isOpen, onClose }: ProjectModalP
             toast({
                 title: "Sucesso",
                 description: "Projeto criado com sucesso",
+                variant: "success",
             });
             onClose();
         },
@@ -95,6 +102,7 @@ export default function ProjectModal({ project, isOpen, onClose }: ProjectModalP
             toast({
                 title: "Sucesso",
                 description: "Projeto atualizado com sucesso",
+                variant: "success",
             });
             onClose();
         },
@@ -157,6 +165,72 @@ export default function ProjectModal({ project, isOpen, onClose }: ProjectModalP
                                 </FormItem>
                             )}
                         />
+
+                        {!form.watch("isPersonal") && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField
+                                    control={form.control}
+                                    name="estimatedHours"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Horas Estimadas</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    type="number"
+                                                    placeholder="Ex: 100"
+                                                    {...field}
+                                                    onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                                                    value={field.value || ''}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="deadline"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-col">
+                                            <FormLabel className="mb-2.5">Prazo de Entrega</FormLabel>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <FormControl>
+                                                        <Button
+                                                            variant={"outline"}
+                                                            className={cn(
+                                                                "w-full pl-3 text-left font-normal",
+                                                                !field.value && "text-muted-foreground"
+                                                            )}
+                                                        >
+                                                            {field.value ? (
+                                                                format(field.value, "PPP", { locale: ptBR })
+                                                            ) : (
+                                                                <span>Selecione uma data</span>
+                                                            )}
+                                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                        </Button>
+                                                    </FormControl>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar
+                                                        mode="single"
+                                                        selected={field.value || undefined}
+                                                        onSelect={field.onChange}
+                                                        disabled={(date) =>
+                                                            date < new Date("1900-01-01")
+                                                        }
+                                                        initialFocus
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        )}
 
                         <DialogFooter>
                             <Button

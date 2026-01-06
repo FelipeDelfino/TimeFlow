@@ -210,4 +210,73 @@ export function registerTeamRoutes(app: Express) {
             res.status(500).json({ message: "Error fetching members" });
         }
     });
+    // List projects for a team
+    app.get("/api/teams/:id/projects", authenticateAny, async (req: any, res) => {
+        try {
+            const teamId = parseInt(req.params.id);
+            // Verify access: user must be member or admin
+            const members = await storage.getTeamMembers(teamId);
+            const isMember = members.some(m => m.id === req.user.id);
+            const isAdmin = req.user.role === 'admin';
+
+            if (!isMember && !isAdmin) {
+                return res.status(403).json({ message: "Access denied" });
+            }
+
+            const projects = await storage.getProjectsForTeam(teamId);
+            res.json(projects);
+        } catch (error) {
+            res.status(500).json({ message: "Error fetching team projects" });
+        }
+    });
+
+    // Bind project to team (Manager/Admin only)
+    app.post("/api/teams/:id/projects", authenticateAny, async (req: any, res) => {
+        try {
+            const teamId = parseInt(req.params.id);
+            const { projectId } = req.body;
+
+            // Verify manager access
+            const managers = await storage.getTeamManagers(teamId);
+            const isManager = managers.some(m => m.id === req.user.id);
+            const isAdmin = req.user.role === 'admin';
+
+            if (!isManager && !isAdmin) {
+                return res.status(403).json({ message: "Only managers can bind projects" });
+            }
+
+            // Bind
+            await storage.bindProjectToTeam({
+                projectId,
+                teamId
+            });
+
+            res.status(201).json({ message: "Project bound to team" });
+        } catch (error) {
+            res.status(500).json({ message: "Error binding project" });
+        }
+    });
+
+    // Unbind project from team (Manager/Admin only)
+    app.delete("/api/teams/:id/projects/:projectId", authenticateAny, async (req: any, res) => {
+        try {
+            const teamId = parseInt(req.params.id);
+            const projectId = parseInt(req.params.projectId);
+
+            // Verify manager access
+            const managers = await storage.getTeamManagers(teamId);
+            const isManager = managers.some(m => m.id === req.user.id);
+            const isAdmin = req.user.role === 'admin';
+
+            if (!isManager && !isAdmin) {
+                return res.status(403).json({ message: "Only managers can unbind projects" });
+            }
+
+            await storage.unbindProjectFromTeam(teamId, projectId);
+            res.json({ message: "Project unbound from team" });
+        } catch (error) {
+            res.status(500).json({ message: "Error unbinding project" });
+        }
+    });
+
 }

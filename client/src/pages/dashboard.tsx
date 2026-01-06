@@ -59,7 +59,7 @@ export default function Dashboard() {
     try {
       let endpoint = "";
       let title = "";
-      
+
       switch (type) {
         case "overdue":
           endpoint = "/api/dashboard/overdue-tasks";
@@ -126,7 +126,7 @@ export default function Dashboard() {
                 <Clock className="text-primary text-xl h-6 w-6" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Tempo Hoje</p>
+                <p className="text-sm font-medium text-gray-600">Tempo Apontado Hoje</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {formatDurationForDashboard(stats?.todayTime || 0)}
                 </p>
@@ -142,9 +142,25 @@ export default function Dashboard() {
                 <ListTodo className="text-secondary text-xl h-6 w-6" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Tarefas Ativas</p>
+                <p className="text-sm font-medium text-gray-600">Tarefas em Andamento</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {stats?.activeTasks || 0}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-gray-100">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-green-100">
+                <Trophy className="text-green-600 text-xl h-6 w-6" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Tarefas Concluídas</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {stats?.completedTasks || 0}
                 </p>
               </div>
             </div>
@@ -183,7 +199,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card 
+        <Card
           className={`border cursor-pointer hover:shadow-md transition-shadow ${stats?.overdueTasks && stats.overdueTasks > 0 ? 'border-red-300 bg-red-50' : 'border-gray-100'}`}
           onClick={() => handleCardClick("overdue")}
         >
@@ -202,7 +218,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card 
+        <Card
           className={`border cursor-pointer hover:shadow-md transition-shadow ${stats?.overTimeTasks && stats.overTimeTasks > 0 ? 'border-orange-300 bg-orange-50' : 'border-gray-100'}`}
           onClick={() => handleCardClick("overtime")}
         >
@@ -221,7 +237,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card 
+        <Card
           className={`border cursor-pointer hover:shadow-md transition-shadow ${stats?.dueTodayTasks && stats.dueTodayTasks > 0 ? 'border-blue-300 bg-blue-50' : 'border-gray-100'}`}
           onClick={() => handleCardClick("dueToday")}
         >
@@ -240,7 +256,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card 
+        <Card
           className={`border cursor-pointer hover:shadow-md transition-shadow ${stats?.dueTomorrowTasks && stats.dueTomorrowTasks > 0 ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100'}`}
           onClick={() => handleCardClick("dueTomorrow")}
         >
@@ -259,7 +275,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card 
+        <Card
           className={`border cursor-pointer hover:shadow-md transition-shadow ${stats?.nearingLimitTasks && stats.nearingLimitTasks > 0 ? 'border-yellow-300 bg-yellow-50' : 'border-gray-100'}`}
           onClick={() => handleCardClick("nearingLimit")}
         >
@@ -283,14 +299,14 @@ export default function Dashboard() {
       <Card className="border border-gray-100">
         <CardContent className="p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Apontamentos Recentes</h3>
-          
+
           {recentEntries.length > 0 ? (
             <div className="space-y-3">
               {recentEntries.map((entry) => (
                 <div key={entry.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center">
-                    <div 
-                      className="w-3 h-3 rounded-full mr-3" 
+                    <div
+                      className="w-3 h-3 rounded-full mr-3"
                       style={{ backgroundColor: entry.task.color }}
                     />
                     <span className="text-sm font-medium text-gray-900">

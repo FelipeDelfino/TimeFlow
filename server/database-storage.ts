@@ -1,10 +1,23 @@
 import { tasks, taskItems, timeEntries, whatsappIntegrations, whatsappLogs, notificationSettings, users, teams, teamMembers, teamManagers, projects, projectTeams, type Task, type InsertTask, type TaskItem, type InsertTaskItem, type TimeEntry, type InsertTimeEntry, type UpdateTimeEntry, type TaskWithStats, type TimeEntryWithTask, type WhatsappIntegration, type InsertWhatsappIntegration, type WhatsappLog, type InsertWhatsappLog, type NotificationSettings, type InsertNotificationSettings, type User, type InsertUser, type Team, type InsertTeam, type TeamMember, type InsertTeamMember, type TeamManager, type InsertTeamManager, type Project, type InsertProject, type ProjectTeam, type InsertProjectTeam } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, isNull, desc, asc } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, desc, asc, inArray, or } from "drizzle-orm";
 import { IStorage } from "./storage";
 
 export class DatabaseStorage implements IStorage {
   // User authentication methods
+  async getUserByUsernameOrEmail(identifier: string): Promise<User | undefined> {
+    // Busca por username OU email (case insensitive se possível, mas aqui exato ou com ILIKE se suportado.
+    // Drizzle com PostgreSQL: usar ilike ou or(eq(...), eq(...))
+    // Aqui faremos case sensitive para simplificar ou usar sql lower() se necessário, mas OR é o principal.
+    const [user] = await db.select().from(users).where(
+      or(
+        eq(users.username, identifier),
+        eq(users.email, identifier)
+      )
+    );
+    return user || undefined;
+  }
+
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user || undefined;
@@ -75,7 +88,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserManagedTeams(userId: number, teamIds: number[]): Promise<void> {
     // Transaction to ensure atomicity
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: any) => {
       // Remove all existing managements for this user
       await tx.delete(teamManagers).where(eq(teamManagers.userId, userId));
 
@@ -182,9 +195,7 @@ export class DatabaseStorage implements IStorage {
     return managedTeams.map((t: { team: Team }) => t.team);
   }
 
-  async getAllTeams(): Promise<Team[]> {
-    return await db.select().from(teams).where(eq(teams.isActive, true));
-  }
+
 
   // Project methods
   async createProject(project: InsertProject): Promise<Project> {
@@ -234,9 +245,30 @@ export class DatabaseStorage implements IStorage {
     return Array.from(allProjectsMap.values());
   }
 
+  async getAllProjects(): Promise<Project[]> {
+    return await db.select().from(projects).where(eq(projects.isActive, true));
+  }
+
   async bindProjectToTeam(projectTeam: InsertProjectTeam): Promise<ProjectTeam> {
     const [link] = await db.insert(projectTeams).values(projectTeam).returning();
     return link;
+  }
+
+  async getProjectsForTeam(teamId: number): Promise<Project[]> {
+    const projectsList = await db.select({
+      project: projects
+    })
+      .from(projects)
+      .innerJoin(projectTeams, eq(projects.id, projectTeams.projectId))
+      .where(and(eq(projectTeams.teamId, teamId), eq(projects.isActive, true)));
+
+    return projectsList.map((p: any) => p.project);
+  }
+
+  async unbindProjectFromTeam(teamId: number, projectId: number): Promise<boolean> {
+    const result = await db.delete(projectTeams)
+      .where(and(eq(projectTeams.teamId, teamId), eq(projectTeams.projectId, projectId)));
+    return (result.rowCount || 0) > 0;
   }
 
   async migrateOrphanTasks(userId: number, projectId: number): Promise<number> {
@@ -498,6 +530,7 @@ export class DatabaseStorage implements IStorage {
     dueTodayTasks: number;
     dueTomorrowTasks: number;
     nearingLimitTasks: number;
+    efficiency: number;
   }> {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -535,17 +568,55 @@ export class DatabaseStorage implements IStorage {
     // Tarefas concluídas
     const completedTasks = await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.isCompleted, true)));
 
+    // Calcular Eficiência (Tempo Realizado / Tempo Estimado em Tarefas Concluídas)
+    let totalEstimatedSeconds = 0;
+    let totalActualSeconds = 0;
+
+    if (completedTasks.length > 0) {
+      const completedTaskIds = completedTasks.map((t: Task) => t.id);
+
+      // Somar estimativas
+      totalEstimatedSeconds = completedTasks.reduce((sum: number, task: Task) => {
+        return sum + ((task.estimatedHours || 0) * 3600);
+      }, 0);
+
+      // Buscar apontamentos das tarefas concluídas
+      // Apenas se houver tarefas concluídas, para evitar erro no inArray vazio
+      const completedTaskEntries = await db.select()
+        .from(timeEntries)
+        .where(inArray(timeEntries.taskId, completedTaskIds));
+
+      totalActualSeconds = completedTaskEntries.reduce((sum: number, entry: TimeEntry) => sum + (entry.duration || 0), 0);
+    }
+
+    // Eficiência: 100% se Realizado == Estimado.
+    // Se Realizado < Estimado, Eficiência > 100% (Economizou tempo)
+    // Se Realizado > Estimado, Eficiência < 100% (Estourou prazo)
+    // Fórmula comum: (Estimado / Realizado) * 100
+    // Ex: Estimado 100, Realizado 80 -> (100/80)*100 = 125% (Mandou bem!)
+    // Ex: Estimado 100, Realizado 120 -> (100/120)*100 = 83% (Atrasou)
+
+    let efficiency = 0;
+    if (totalActualSeconds > 0) {
+      efficiency = Math.round((totalEstimatedSeconds / totalActualSeconds) * 100);
+    } else if (totalEstimatedSeconds > 0) {
+      // Se não tem apontamentos mas tem estimativa, efficiency é infinita/100?
+      // Vamos considerar 100% se completou sem gastar tempo? (Raro) ou 0?
+      efficiency = 100;
+    }
+
     return {
       todayTime,
       activeTasks: activeTasks.length,
       weekTime,
       monthTime,
       completedTasks: completedTasks.length,
-      overdueTasks: 0, // TODO: Implementar lógica de atraso
-      overTimeTasks: 0, // TODO: Implementar lógica de horas excedidas
-      dueTodayTasks: 0, // TODO: Implementar lógica de vencimento hoje
-      dueTomorrowTasks: 0, // TODO: Implementar lógica de vencimento amanhã
-      nearingLimitTasks: 0 // TODO: Implementar lógica de próximo do limite
+      overdueTasks: 0,
+      overTimeTasks: 0,
+      dueTodayTasks: 0,
+      dueTomorrowTasks: 0,
+      nearingLimitTasks: 0,
+      efficiency
     };
   }
 

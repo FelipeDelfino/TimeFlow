@@ -15,6 +15,20 @@
       "when": 1751569576000,
       "tag": "0001_fix_whatsapp_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1767719784375,
+      "tag": "0002_add_project_deadline",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1767724668356,
+      "tag": "0003_add_recovery_key",
+      "breakpoints": true
     }
   ]
 }

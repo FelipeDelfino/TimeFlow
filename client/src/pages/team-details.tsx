@@ -37,7 +37,7 @@ export default function TeamDetailsPage() {
         mutationFn: (userId: number) => apiRequest("DELETE", `/api/teams/${id}/members/${userId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: [`/api/teams/${id}/members`] });
-            toast({ title: "Membro removido", description: "O usuário foi removido do time." });
+            toast({ title: "Membro removido", description: "O usuário foi removido do time.", variant: "success" });
         },
         onError: (error: any) => {
             toast({ title: "Erro", description: error.message || "Falha ao remover membro", variant: "destructive" });
@@ -106,6 +106,8 @@ export default function TeamDetailsPage() {
                         </Table>
                     </CardContent>
                 </Card>
+
+                <TeamProjectsCard teamId={id} />
             </div>
         </div>
     );
@@ -127,7 +129,7 @@ function AddMemberDialog({ teamId }: { teamId: number }) {
         mutationFn: (userId: number) => apiRequest("POST", `/api/teams/${teamId}/members`, { userId }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/members`] });
-            toast({ title: "Membro adicionado", description: "Usuário adicionado ao time." });
+            toast({ title: "Membro adicionado", description: "Usuário adicionado ao time.", variant: "success" });
             setOpen(false);
             setQuery("");
         },
@@ -181,6 +183,157 @@ function AddMemberDialog({ teamId }: { teamId: number }) {
                             <div className="text-center text-sm text-gray-500 p-4">Nenhum usuário encontrado.</div>
                         )}
                     </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+import type { Project } from "@shared/schema";
+import { Folder } from "lucide-react";
+
+function TeamProjectsCard({ teamId }: { teamId: number }) {
+    const { toast } = useToast();
+    const { data: projects, isLoading } = useQuery<Project[]>({
+        queryKey: [`/api/teams/${teamId}/projects`],
+    });
+
+    const unbindMutation = useMutation({
+        mutationFn: (projectId: number) => apiRequest("DELETE", `/api/teams/${teamId}/projects/${projectId}`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/projects`] });
+            toast({ title: "Projeto removido", description: "Projeto desvinculado do time.", variant: "success" });
+        },
+        onError: (error: any) => {
+            toast({ title: "Erro", description: error.message || "Falha ao desvincular projeto", variant: "destructive" });
+        }
+    });
+
+    return (
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Projetos Vinculados ({projects?.length || 0})</CardTitle>
+                <AddProjectDialog teamId={teamId} linkedProjectIds={projects?.map(p => p.id) || []} />
+            </CardHeader>
+            <CardContent>
+                {isLoading ? (
+                    <div className="text-center p-4">Carregando projetos...</div>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Nome</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="w-[100px]">Ações</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {projects?.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                        Nenhum projeto vinculado a este time.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                            {projects?.map((project) => (
+                                <TableRow key={project.id}>
+                                    <TableCell className="flex items-center gap-2">
+                                        <Folder className="h-4 w-4 text-blue-500" />
+                                        <span>{project.name}</span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <span className={`px-2 py-1 rounded text-xs ${project.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                            {project.isActive ? 'Ativo' : 'Inativo'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-red-500 hover:text-red-700"
+                                            onClick={() => {
+                                                if (confirm("Desvincular este projeto do time?")) unbindMutation.mutate(project.id);
+                                            }}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+function AddProjectDialog({ teamId, linkedProjectIds }: { teamId: number, linkedProjectIds: number[] }) {
+    const [open, setOpen] = useState(false);
+    const { toast } = useToast();
+
+    // Fetch all active projects (Admin/Manager usually sees what they can link. For now, fetching all active projects the user has access to see)
+    // Note: The /api/projects endpoint returns projects the user has access to. 
+    // If Admin, all projects. If user, their projects.
+    // If the user is a manager of this team, they might want to link a project they own.
+    const { data: availableProjects, isLoading } = useQuery<Project[]>({
+        queryKey: ["/api/projects"],
+    });
+
+    const bindMutation = useMutation({
+        mutationFn: (projectId: number) => apiRequest("POST", `/api/teams/${teamId}/projects`, { projectId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/projects`] });
+            toast({ title: "Projeto vinculado", description: "O projeto agora está disponível para o time.", variant: "success" });
+            setOpen(false);
+        },
+        onError: (e: any) => {
+            toast({ title: "Erro", description: "Falha ao vincular projeto.", variant: "destructive" });
+        }
+    });
+
+    const projectsToLink = availableProjects?.filter(p => !linkedProjectIds.includes(p.id) && !p.isPersonal) || [];
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button size="sm">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Vincular Projeto
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Vincular Projeto Existente</DialogTitle>
+                    <CardDescription>Selecione um projeto para disponibilizar para este time.</CardDescription>
+                </DialogHeader>
+                <div className="space-y-4 max-h-60 overflow-y-auto">
+                    {isLoading ? (
+                        <div className="text-center">Carregando...</div>
+                    ) : projectsToLink.length === 0 ? (
+                        <div className="text-center text-muted-foreground p-4">
+                            Nenhum projeto disponível para vincular.
+                        </div>
+                    ) : (
+                        <div className="grid gap-2">
+                            {projectsToLink.map(project => (
+                                <div key={project.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                                    <div className="flex items-center gap-2">
+                                        <Folder className="h-4 w-4 text-blue-500" />
+                                        <span className="font-medium">{project.name}</span>
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => bindMutation.mutate(project.id)}
+                                        disabled={bindMutation.isPending}
+                                    >
+                                        Vincular
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

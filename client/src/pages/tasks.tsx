@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit, Trash2, Search, Filter, FolderPlus, Folder, MoreVertical } from "lucide-react";
+import { Plus, Edit, Trash2, Search, Filter, FolderPlus, Folder, MoreVertical, CalendarClock, Activity } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import TaskModal from "@/components/task-modal";
@@ -30,7 +33,7 @@ export default function Tasks() {
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("in_progress");
   const [colorFilter, setColorFilter] = useState<string>("all");
   const { toast } = useToast();
 
@@ -47,12 +50,34 @@ export default function Tasks() {
   const isLoading = isLoadingTasks || isLoadingProjects;
 
   // Derived State: Active and Completed Tasks
-  const { activeTasks, completedTasks } = useMemo(() => {
-    if (!tasks) return { activeTasks: [], completedTasks: [] };
-    const active = tasks.filter(task => !task.isCompleted);
-    const completed = tasks.filter(task => task.isCompleted);
-    return { activeTasks: active, completedTasks: completed };
-  }, [tasks]);
+  const filteredTasks = useMemo(() => {
+    if (!tasks) return [];
+
+    return tasks.filter(task => {
+      // 1. Filter by Search
+      const matchesSearch = searchTerm === "" ||
+        task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (task.description && task.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      // 2. Filter by Status (Completion)
+      // "all" -> show everything
+      // "in_progress" -> !isCompleted
+      // "completed" -> isCompleted
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "in_progress" && !task.isCompleted) ||
+        (statusFilter === "completed" && task.isCompleted);
+
+      // 3. Filter by Color
+      const matchesColor = colorFilter === "all" || task.color === colorFilter;
+
+      // Show active tasks OR completed tasks.
+      // Since completeTask sets isActive to false, we must explicitly allow isCompleted tasks.
+      const isVisible = task.isActive || task.isCompleted;
+
+      return matchesSearch && matchesStatus && matchesColor && isVisible;
+    });
+  }, [tasks, searchTerm, statusFilter, colorFilter]);
 
   // Unique Colors for Filter
   const availableColors = useMemo(() => {
@@ -61,29 +86,11 @@ export default function Tasks() {
     return colors.sort();
   }, [tasks]);
 
-  // Filter Logic Function
-  const filterTasks = (taskList: TaskWithStats[]) => {
-    return taskList.filter(task => {
-      const matchesSearch = searchTerm === "" ||
-        task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.description && task.description.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const matchesStatus = statusFilter === "all" ||
-        (statusFilter === "active" && task.isActive) ||
-        (statusFilter === "inactive" && !task.isActive);
-
-      const matchesColor = colorFilter === "all" || task.color === colorFilter;
-
-      return matchesSearch && matchesStatus && matchesColor;
-    });
-  };
-
-  const filteredActiveTasks = useMemo(() => filterTasks(activeTasks), [activeTasks, searchTerm, statusFilter, colorFilter]);
-  const filteredCompletedTasks = useMemo(() => filterTasks(completedTasks), [completedTasks, searchTerm, colorFilter]);
 
   // Group Active Tasks by Project
   const tasksByProject = useMemo(() => {
-    if (!projects || !filteredActiveTasks) return { grouped: [], tasksWithoutProject: [] };
+    if (!projects || !filteredTasks) return { grouped: [], tasksWithoutProject: [] };
 
     // Create a map of tasks by project ID
     const projectMap = new Map<number, TaskWithStats[]>();
@@ -98,7 +105,7 @@ export default function Tasks() {
 
     // Distribute tasks
     const tasksWithoutProject: TaskWithStats[] = [];
-    filteredActiveTasks.forEach(task => {
+    filteredTasks.forEach(task => {
       if (task.projectId) {
         const projectTasks = projectMap.get(task.projectId);
         if (projectTasks) {
@@ -130,32 +137,32 @@ export default function Tasks() {
       });
 
     return { grouped, tasksWithoutProject };
-  }, [projects, filteredActiveTasks, searchTerm, colorFilter]);
+  }, [projects, filteredTasks, searchTerm, colorFilter]);
 
   // Mutations
   const deleteTaskMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/tasks/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      toast({ title: "Sucesso", description: "Atividade excluída com sucesso" });
+      toast({ title: "Sucesso", description: "Atividade excluída com sucesso", variant: "success" });
     },
     onError: () => toast({ title: "Erro", description: "Falha ao excluir atividade", variant: "destructive" }),
   });
 
   const completeTaskMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("PUT", `/api/tasks/${id}/complete`),
+    mutationFn: (id: number) => apiRequest("POST", `/api/tasks/${id}/complete`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      toast({ title: "Sucesso", description: "Atividade concluída com sucesso" });
+      toast({ title: "Sucesso", description: "Atividade concluída com sucesso", variant: "success" });
     },
     onError: () => toast({ title: "Erro", description: "Falha ao concluir atividade", variant: "destructive" }),
   });
 
   const reopenTaskMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("PUT", `/api/tasks/${id}/reopen`),
+    mutationFn: (id: number) => apiRequest("POST", `/api/tasks/${id}/reopen`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      toast({ title: "Sucesso", description: "Atividade reaberta com sucesso" });
+      toast({ title: "Sucesso", description: "Atividade reaberta com sucesso", variant: "success" });
     },
     onError: () => toast({ title: "Erro", description: "Falha ao reabrir atividade", variant: "destructive" }),
   });
@@ -164,7 +171,7 @@ export default function Tasks() {
     mutationFn: (id: number) => apiRequest("DELETE", `/api/projects/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      toast({ title: "Sucesso", description: "Projeto excluído com sucesso" });
+      toast({ title: "Sucesso", description: "Projeto excluído com sucesso", variant: "success" });
     },
     onError: () => toast({ title: "Erro", description: "Falha ao excluir projeto (verifique se há tarefas vinculadas)", variant: "destructive" }),
   });
@@ -213,7 +220,8 @@ export default function Tasks() {
       const stats = data.stats;
       toast({
         title: "Migração Concluída",
-        description: `Projetos criados: ${stats.projectsCreated}, Tarefas migradas: ${stats.tasksMigrated}`
+        description: `Projetos criados: ${stats.projectsCreated}, Tarefas migradas: ${stats.tasksMigrated}`,
+        variant: "success"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
@@ -242,7 +250,7 @@ export default function Tasks() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-8xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
@@ -252,9 +260,9 @@ export default function Tasks() {
         <div className="flex gap-2">
           {isAdmin && (
             <>
-              <Button variant="outline" onClick={handleMigration} disabled={migrationMutation.isPending}>
+              {/* <Button variant="outline" onClick={handleMigration} disabled={migrationMutation.isPending}>
                 {migrationMutation.isPending ? "Migrando..." : "Reparar Projetos"}
-              </Button>
+              </Button> */}
               <Button variant="outline" onClick={handleNewProject}>
                 <FolderPlus className="mr-2 h-4 w-4" />
                 Novo Projeto
@@ -293,8 +301,8 @@ export default function Tasks() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="active">Ativas</SelectItem>
-                <SelectItem value="inactive">Inativas</SelectItem>
+                <SelectItem value="in_progress">Em andamento</SelectItem>
+                <SelectItem value="completed">Concluídas</SelectItem>
               </SelectContent>
             </Select>
 
@@ -360,6 +368,47 @@ export default function Tasks() {
               )}
             </div>
 
+            {/* Project Stats (Deadline & Estimates) */}
+            {(project.deadline || (!project.isPersonal && project.estimatedHours)) && (
+              <div className="flex flex-wrap items-center gap-6 pb-2 text-sm text-gray-500 pl-7">
+                {project.deadline && (
+                  <div className={`flex items-center gap-1.5 ${new Date(project.deadline) < new Date() ? 'text-red-600 font-medium' : ''}`}>
+                    <CalendarClock className="h-4 w-4" />
+                    <span>
+                      Prazo: {format(new Date(project.deadline), "dd/MM/yyyy")}
+                      {new Date(project.deadline) < new Date() && " (Atrasado)"}
+                    </span>
+                  </div>
+                )}
+
+                {!project.isPersonal && project.estimatedHours && (
+                  <div className="flex items-center gap-2 min-w-[240px]">
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span>Horas: {Math.round((tasks.reduce((acc, t) => acc + (t.totalTime || 0), 0) / 3600) * 10) / 10}h / {project.estimatedHours}h</span>
+                        <span className={
+                          (tasks.reduce((acc, t) => acc + (t.totalTime || 0), 0) / 3600) > project.estimatedHours
+                            ? "text-red-600"
+                            : "text-gray-600"
+                        }>
+                          {Math.round(((tasks.reduce((acc, t) => acc + (t.totalTime || 0), 0) / 3600) / project.estimatedHours) * 100)}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={Math.min(((tasks.reduce((acc, t) => acc + (t.totalTime || 0), 0) / 3600) / project.estimatedHours) * 100, 100)}
+                        className="h-2"
+                        indicatorClassName={
+                          (tasks.reduce((acc, t) => acc + (t.totalTime || 0), 0) / 3600) > project.estimatedHours
+                            ? "bg-red-500"
+                            : undefined
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {tasks.length > 0 ? (
                 tasks.map(task => (
@@ -369,8 +418,10 @@ export default function Tasks() {
                     onEdit={() => handleEditTask(task)}
                     onDelete={() => handleDeleteTask(task.id)}
                     onComplete={() => completeTaskMutation.mutate(task.id)}
+                    onReopen={() => reopenTaskMutation.mutate(task.id)}
                     isCompleting={completeTaskMutation.isPending}
                     isDeleting={deleteTaskMutation.isPending}
+                    isReopening={reopenTaskMutation.isPending}
                   />
                 ))
               ) : (
@@ -383,83 +434,72 @@ export default function Tasks() {
               )}
             </div>
           </div>
-        ))}
+        ))
+        }
 
         {/* Tasks without projects (Fallback) */}
-        {tasksByProject.tasksWithoutProject.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 px-1">
-              <h3 className="text-lg font-semibold text-gray-800">Sem Projeto</h3>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">
-                {tasksByProject.tasksWithoutProject.length}
-              </span>
+        {
+          tasksByProject.tasksWithoutProject.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1">
+                <h3 className="text-lg font-semibold text-gray-800">Sem Projeto</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">
+                  {tasksByProject.tasksWithoutProject.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {tasksByProject.tasksWithoutProject.map(task => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onEdit={() => handleEditTask(task)}
+                    onDelete={() => handleDeleteTask(task.id)}
+                    onComplete={() => completeTaskMutation.mutate(task.id)}
+                    onReopen={() => reopenTaskMutation.mutate(task.id)}
+                    isCompleting={completeTaskMutation.isPending}
+                    isDeleting={deleteTaskMutation.isPending}
+                    isReopening={reopenTaskMutation.isPending}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tasksByProject.tasksWithoutProject.map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onEdit={() => handleEditTask(task)}
-                  onDelete={() => handleDeleteTask(task.id)}
-                  onComplete={() => completeTaskMutation.mutate(task.id)}
-                  isCompleting={completeTaskMutation.isPending}
-                  isDeleting={deleteTaskMutation.isPending}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+          )
+        }
+      </div >
 
-      {/* Completed Tasks Section */}
-      {filteredCompletedTasks.length > 0 && (
-        <div className="mt-12 pt-8 border-t">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-            <span>Concluídas</span>
-            <span className="text-sm font-normal text-gray-500">({filteredCompletedTasks.length})</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-75">
-            {filteredCompletedTasks.map(task => (
-              <CompletedTaskCard
-                key={task.id}
-                task={task}
-                onReopen={() => reopenTaskMutation.mutate(task.id)}
-                onDelete={() => handleDeleteTask(task.id)}
-                onEdit={() => handleEditTask(task)}
-                isReopening={reopenTaskMutation.isPending}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* Modals */}
-      <TaskModal
+      < TaskModal
         task={selectedTask}
         isOpen={isTaskModalOpen}
         onClose={() => setIsTaskModalOpen(false)}
       />
 
-      <ProjectModal
+      < ProjectModal
         project={selectedProject}
         isOpen={isProjectModalOpen}
         onClose={() => setIsProjectModalOpen(false)}
       />
-    </div>
+    </div >
   );
 }
 
 // Sub-components for cleaner code
-function TaskCard({ task, onEdit, onDelete, onComplete, isCompleting, isDeleting }: any) {
+function TaskCard({ task, onEdit, onDelete, onComplete, onReopen, isCompleting, isDeleting, isReopening }: any) {
+  const isCompleted = task.isCompleted;
+
   return (
-    <Card className="hover:shadow-md transition-shadow border-l-4" style={{ borderLeftColor: task.color }}>
+    <Card className={`hover:shadow-md transition-shadow border-l-4 ${isCompleted ? 'bg-gray-50 opacity-90' : ''}`} style={{ borderLeftColor: task.color }}>
       <CardContent className="p-4">
         <div className="flex justify-between items-start mb-2">
-          <h4 className="font-semibold text-gray-900 line-clamp-1" title={task.name}>{task.name}</h4>
+          <h4 className={`font-semibold text-gray-900 line-clamp-1 ${isCompleted ? 'decoration-slice' : ''}`} title={task.name}>{task.name}</h4>
           <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onEdit}>
-              <Edit className="h-3 w-3 text-gray-500" />
-            </Button>
+            {!isCompleted && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onEdit}>
+                <Edit className="h-3 w-3 text-gray-500" />
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDelete} disabled={isDeleting}>
               <Trash2 className="h-3 w-3 text-gray-500 hover:text-red-600" />
             </Button>
@@ -472,56 +512,50 @@ function TaskCard({ task, onEdit, onDelete, onComplete, isCompleting, isDeleting
 
         <div className="flex items-center justify-between mt-auto">
           <div className="text-xs text-gray-500">
-            {task.activeEntries > 0 && (
+            {isCompleted ? (
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                  Concluída
+                </span>
+                <span className="text-xs text-gray-400">
+                  {task.completedAt && new Date(task.completedAt).toLocaleDateString()}
+                </span>
+              </div>
+            ) : task.activeEntries > 0 ? (
               <span className="text-green-600 font-medium flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 Em andamento
               </span>
-            )}
-            {!task.activeEntries && (
+            ) : (
               <span>{formatDuration(task.totalTime)}</span>
             )}
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs border-green-200 hover:bg-green-50 text-green-700"
-            onClick={onComplete}
-            disabled={isCompleting}
-          >
-            Concluir
-          </Button>
+
+          {isCompleted ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-indigo-600 hover:bg-indigo-50"
+              onClick={onReopen}
+              disabled={isReopening}
+            >
+              Reabrir
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-green-200 hover:bg-green-50 text-green-700"
+              onClick={onComplete}
+              disabled={isCompleting}
+            >
+              Concluir
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
   )
 }
 
-function CompletedTaskCard({ task, onReopen, onDelete, onEdit, isReopening }: any) {
-  return (
-    <Card className="bg-gray-50 border border-gray-100">
-      <CardContent className="p-4">
-        <div className="flex justify-between items-start mb-2">
-          <h4 className="font-medium text-gray-700 line-clamp-1 decoration-slice">{task.name}</h4>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDelete}>
-            <Trash2 className="h-3 w-3 text-gray-400 hover:text-red-500" />
-          </Button>
-        </div>
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-xs text-gray-400">
-            {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : 'Concluída'}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs text-indigo-600 hover:bg-indigo-50"
-            onClick={onReopen}
-            disabled={isReopening}
-          >
-            Reabrir
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+

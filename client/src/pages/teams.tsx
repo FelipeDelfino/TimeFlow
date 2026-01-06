@@ -30,7 +30,7 @@ export default function TeamsPage() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-            toast({ title: "Time excluído", description: "O time foi removido com sucesso." });
+            toast({ title: "Time excluído", description: "O time foi removido com sucesso.", variant: "success" });
             setDeletingTeamId(null);
         },
         onError: () => {
@@ -155,7 +155,7 @@ function CreateTeamDialog() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-            toast({ title: "Sucesso", description: "Time criado com sucesso!" });
+            toast({ title: "Sucesso", description: "Time criado com sucesso!", variant: "success" });
             setOpen(false);
             setName("");
             setDescription("");
@@ -228,7 +228,7 @@ function EditTeamDialog({ team, open, onOpenChange }: { team: Team, open: boolea
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-            toast({ title: "Sucesso", description: "Time atualizado com sucesso!" });
+            toast({ title: "Sucesso", description: "Time atualizado com sucesso!", variant: "success" });
             onOpenChange(false);
         },
         onError: () => {

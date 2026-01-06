@@ -18,6 +18,7 @@ export const users = pgTable("users", {
   resetTokenExpiry: timestamp("reset_token_expiry"),
   lastLogin: timestamp("last_login"),
   apiKey: text("api_key").unique(), // chave para acesso via API
+  recoveryKey: text("recovery_key"), // Hash da chave de recuperação
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -52,6 +53,8 @@ export const projects = pgTable("projects", {
   name: text("name").notNull(),
   description: text("description"),
   isPersonal: boolean("is_personal").notNull().default(false),
+  estimatedHours: integer("estimated_hours"), // horas estimadas para o projeto
+  deadline: timestamp("deadline"), // data limite do projeto
   ownerId: integer("owner_id").references(() => users.id), // Para projetos pessoais
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

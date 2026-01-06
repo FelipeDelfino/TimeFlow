@@ -113,6 +113,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
       toast({
         title: "Sucesso",
         description: "Atividade criada com sucesso",
+        variant: "success",
       });
       onClose();
       form.reset();
@@ -135,6 +136,7 @@ export default function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
       toast({
         title: "Sucesso",
         description: "Atividade atualizada com sucesso",
+        variant: "success",
       });
       onClose();
     },

@@ -93,19 +93,19 @@ export default function WhatsAppPage() {
   const createIntegrationMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/whatsapp/integration", data),
     onSuccess: () => {
-      toast({ title: "Integração WhatsApp criada com sucesso!" });
+      toast({ title: "Integração WhatsApp criada com sucesso!", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/integration"] });
     },
     onError: (error: any) => {
       console.error("❌ Erro detalhado na criação:", error);
-      
+
       let errorMessage = error.message || "Erro desconhecido";
-      
+
       // Se for erro de validação Zod, mostrar detalhes
       if (error.details && Array.isArray(error.details)) {
         errorMessage = error.details.join(", ");
       }
-      
+
       toast({
         title: "Erro ao criar integração",
         description: errorMessage,
@@ -115,10 +115,10 @@ export default function WhatsAppPage() {
   });
 
   const updateIntegrationMutation = useMutation({
-    mutationFn: (data: any) => 
+    mutationFn: (data: any) =>
       apiRequest("PUT", `/api/whatsapp/integration/${integration.id}`, data),
     onSuccess: () => {
-      toast({ title: "Integração WhatsApp atualizada!" });
+      toast({ title: "Integração WhatsApp atualizada!", variant: "success" });
       console.log("🔄 Invalidando cache após atualização...");
       // Invalidar todas as queries relacionadas
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/integration"] });
@@ -140,7 +140,7 @@ export default function WhatsAppPage() {
   const createNotificationMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/notifications/settings", data),
     onSuccess: () => {
-      toast({ title: "Configurações de notificação criadas!" });
+      toast({ title: "Configurações de notificação criadas!", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/settings"] });
     },
     onError: (error: any) => {
@@ -153,10 +153,10 @@ export default function WhatsAppPage() {
   });
 
   const updateNotificationMutation = useMutation({
-    mutationFn: (data: any) => 
+    mutationFn: (data: any) =>
       apiRequest("PUT", `/api/notifications/settings`, data),
     onSuccess: () => {
-      toast({ title: "Configurações de notificação atualizadas!" });
+      toast({ title: "Configurações de notificação atualizadas!", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/settings"] });
     },
     onError: (error: any) => {
@@ -201,7 +201,7 @@ export default function WhatsAppPage() {
 
   const onSubmitIntegration = (data: any) => {
     console.log("🔄 Enviando dados do formulário:", data);
-    
+
     // Validar API Key apenas se for nova integração ou se foi preenchida
     if (!integration && (!data.apiKey || data.apiKey.trim() === '')) {
       toast({
@@ -368,18 +368,18 @@ export default function WhatsAppPage() {
                         <FormItem>
                           <FormLabel>API Key</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="password" 
+                            <Input
+                              type="password"
                               placeholder={
-                                integration?.hasApiKey 
-                                  ? "Digite nova chave ou deixe em branco para manter atual" 
+                                integration?.hasApiKey
+                                  ? "Digite nova chave ou deixe em branco para manter atual"
                                   : "sua-api-key"
                               }
-                              {...field} 
+                              {...field}
                             />
                           </FormControl>
                           <FormDescription>
-                            {integration?.hasApiKey 
+                            {integration?.hasApiKey
                               ? "✅ API Key salva. Deixe em branco para manter ou digite nova chave para substituir."
                               : "Chave de API da Evolution API"
                             }
@@ -408,7 +408,7 @@ export default function WhatsAppPage() {
 
                     <div className="space-y-4 border-t pt-4">
                       <h4 className="font-medium text-gray-900">Controle de Acesso</h4>
-                      
+
                       <FormField
                         control={integrationForm.control}
                         name="responseMode"
@@ -427,7 +427,7 @@ export default function WhatsAppPage() {
                               </SelectContent>
                             </Select>
                             <FormDescription>
-                              <strong>Individual:</strong> Respostas sempre enviadas no privado, mesmo se comando veio de grupo<br/>
+                              <strong>Individual:</strong> Respostas sempre enviadas no privado, mesmo se comando veio de grupo<br />
                               <strong>Grupo:</strong> Respostas enviadas para o grupo configurado quando comando vem de membro autorizado
                             </FormDescription>
                             <FormMessage />
@@ -443,19 +443,19 @@ export default function WhatsAppPage() {
                             <FormItem>
                               <FormLabel>JID do Grupo Autorizado</FormLabel>
                               <FormControl>
-                                <Input 
-                                  placeholder="120363419788242278@g.us" 
-                                  {...field} 
+                                <Input
+                                  placeholder="120363419788242278@g.us"
+                                  {...field}
                                   className="font-mono text-sm"
                                 />
                               </FormControl>
                               <div className="mt-2 p-2 bg-blue-50 rounded-md">
                                 <p className="text-sm text-blue-800 font-medium">JID detectado nos logs:</p>
                                 <code className="text-xs text-blue-700">120363419788242278@g.us</code>
-                                <Button 
-                                  type="button" 
-                                  variant="outline" 
-                                  size="sm" 
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
                                   className="ml-2 h-6 text-xs"
                                   onClick={() => {
                                     integrationForm.setValue("allowedGroupJid", "120363419788242278@g.us");
@@ -465,7 +465,7 @@ export default function WhatsAppPage() {
                                 </Button>
                               </div>
                               <FormDescription>
-                                <strong>Formato:</strong> números@g.us (ex: 120363419788242278@g.us)<br/>
+                                <strong>Formato:</strong> números@g.us (ex: 120363419788242278@g.us)<br />
                                 <strong>Obtenção:</strong> Use webhook/logs para capturar o JID real do grupo
                               </FormDescription>
                               <FormMessage />
@@ -473,7 +473,7 @@ export default function WhatsAppPage() {
                           )}
                         />
                       )}
-                      
+
                       <FormField
                         control={integrationForm.control}
                         name="authorizedNumbers"
@@ -481,16 +481,16 @@ export default function WhatsAppPage() {
                           <FormItem>
                             <FormLabel>Números Autorizados</FormLabel>
                             <FormControl>
-                              <Textarea 
-                                placeholder='["5599999999999@c.us", "5588888888888@c.us"]' 
-                                {...field} 
+                              <Textarea
+                                placeholder='["5599999999999@c.us", "5588888888888@c.us"]'
+                                {...field}
                                 className="min-h-[80px] font-mono text-sm"
                               />
                             </FormControl>
                             <FormDescription>
-                              <strong>Formato obrigatório:</strong> Array JSON com números no formato internacional + @c.us<br/>
-                              <strong>Exemplo:</strong> ["5599999999999@c.us", "5588888888888@c.us"]<br/>
-                              <strong>Uso:</strong> Lista quem pode enviar comandos (individual ou como membro de grupo)<br/>
+                              <strong>Formato obrigatório:</strong> Array JSON com números no formato internacional + @c.us<br />
+                              <strong>Exemplo:</strong> ["5599999999999@c.us", "5588888888888@c.us"]<br />
+                              <strong>Uso:</strong> Lista quem pode enviar comandos (individual ou como membro de grupo)<br />
                               <strong>Importante:</strong> Use aspas duplas e inclua @c.us no final de cada número
                             </FormDescription>
                             <FormMessage />
@@ -500,13 +500,13 @@ export default function WhatsAppPage() {
                     </div>
 
                     <div className="flex gap-3">
-                      <Button 
-                        type="submit" 
+                      <Button
+                        type="submit"
                         disabled={createIntegrationMutation.isPending || updateIntegrationMutation.isPending}
                       >
                         {integration ? "Atualizar Integração" : "Criar Integração"}
                       </Button>
-                      
+
                       {integration && (
                         <Badge variant={integration.isActive ? "default" : "secondary"}>
                           {integration.isActive ? "Ativo" : "Inativo"}
@@ -530,13 +530,13 @@ export default function WhatsAppPage() {
               <CardContent>
                 <Form {...notificationForm}>
                   <form onSubmit={notificationForm.handleSubmit(onSubmitNotifications)} className="space-y-6">
-                    
+
                     <div className="space-y-4">
                       <h4 className="font-medium flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
                         Relatórios Automáticos
                       </h4>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-3">
                           <FormField
@@ -628,7 +628,7 @@ export default function WhatsAppPage() {
                         <Clock className="h-4 w-4" />
                         Lembretes
                       </h4>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-3">
                           <FormField
@@ -657,10 +657,10 @@ export default function WhatsAppPage() {
                                 <FormItem>
                                   <FormLabel>Horas Antes</FormLabel>
                                   <FormControl>
-                                    <Input 
-                                      type="number" 
-                                      min="1" 
-                                      max="168" 
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      max="168"
                                       {...field}
                                       onChange={e => field.onChange(parseInt(e.target.value))}
                                     />
@@ -702,10 +702,10 @@ export default function WhatsAppPage() {
                                 <FormItem>
                                   <FormLabel>Intervalo (minutos)</FormLabel>
                                   <FormControl>
-                                    <Input 
-                                      type="number" 
-                                      min="5" 
-                                      max="480" 
+                                    <Input
+                                      type="number"
+                                      min="5"
+                                      max="480"
                                       {...field}
                                       onChange={e => field.onChange(parseInt(e.target.value))}
                                     />
@@ -722,8 +722,8 @@ export default function WhatsAppPage() {
                       </div>
                     </div>
 
-                    <Button 
-                      type="submit" 
+                    <Button
+                      type="submit"
                       disabled={createNotificationMutation.isPending || updateNotificationMutation.isPending}
                     >
                       {notificationSettings ? "Atualizar Configurações" : "Criar Configurações"}
@@ -743,7 +743,7 @@ export default function WhatsAppPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                
+
                 <div>
                   <h4 className="font-medium mb-3 text-green-700">📋 Gestão de Tarefas</h4>
                   <div className="grid gap-3">

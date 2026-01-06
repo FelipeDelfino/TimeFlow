@@ -52,12 +52,20 @@ export function registerProjectRoutes(app: Express) {
         }
     });
 
-    // Get user's projects (Personal + Team projects)
     app.get("/api/projects", authenticateAny, async (req: any, res) => {
         try {
-            const projects = await storage.getProjectsForUser(req.user.id);
-            res.json(projects);
+            console.log(`[GET /api/projects] Fetching for user ${req.user.id} (${req.user.username}), role: ${req.user.role}`);
+            if (req.user.role === 'admin') {
+                const projects = await storage.getAllProjects();
+                console.log(`[GET /api/projects] Admin found ${projects.length} projects`);
+                res.json(projects);
+            } else {
+                const projects = await storage.getProjectsForUser(req.user.id);
+                console.log(`[GET /api/projects] User found ${projects.length} projects`);
+                res.json(projects);
+            }
         } catch (error) {
+            console.error("[GET /api/projects] Error:", error);
             res.status(500).json({ message: "Error fetching projects" });
         }
     });
@@ -68,7 +76,11 @@ export function registerProjectRoutes(app: Express) {
             // Validate with schema but allow overrides
             const projectData = insertProjectSchema.parse(req.body);
 
-            // Force ownerId to be current user if not admin
+            // Force ownerId to be current user if not provided in body (admins can set it, but default to self)
+            if (!projectData.ownerId) {
+                projectData.ownerId = req.user.id;
+            }
+            // For non-admins, strict enforcement (which is already covered if we overwrite, but let's be safe)
             if (req.user.role !== 'admin') {
                 projectData.ownerId = req.user.id;
             }

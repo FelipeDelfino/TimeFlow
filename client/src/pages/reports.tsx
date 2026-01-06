@@ -37,7 +37,7 @@ export default function Reports() {
     date.setDate(date.getDate() - 7);
     return getBrazilianDateString(date);
   });
-  
+
   const [endDate, setEndDate] = useState(() => {
     return getBrazilianDateString(new Date());
   });
@@ -67,7 +67,7 @@ export default function Reports() {
       setIsExporting(true);
       const params = new URLSearchParams({ startDate, endDate });
       const response = await fetch(`/api/export/csv?${params}`);
-      
+
       if (!response.ok) {
         throw new Error("Failed to export data");
       }
@@ -85,6 +85,7 @@ export default function Reports() {
       toast({
         title: "Sucesso",
         description: "Dados exportados em CSV com sucesso",
+        variant: "success",
       });
     } catch (error) {
       toast({
@@ -100,11 +101,11 @@ export default function Reports() {
   const handleExportPDF = async () => {
     try {
       setIsExporting(true);
-      
+
       // Abrir o relatório em uma nova aba com filtros de data
       const params = new URLSearchParams({ startDate, endDate });
       const newWindow = window.open(`/api/export/pdf?${params}`, "_blank");
-      
+
       if (!newWindow) {
         throw new Error("Popup bloqueado");
       }
@@ -112,6 +113,7 @@ export default function Reports() {
       toast({
         title: "Sucesso",
         description: "Relatório aberto em nova aba. Use Ctrl+P para imprimir ou salvar como PDF",
+        variant: "success",
       });
     } catch (error) {
       toast({
@@ -292,7 +294,7 @@ export default function Reports() {
           <h4 className="text-lg font-semibold text-gray-900 mb-3">
             Tempo por Atividade
           </h4>
-          
+
           {weeklyData && weeklyData.length > 0 ? (
             <div className="space-y-4">
               {weeklyData.map((item) => {
@@ -300,8 +302,8 @@ export default function Reports() {
                 return (
                   <div key={item.task.id} className="flex items-center justify-between">
                     <div className="flex items-center flex-1">
-                      <div 
-                        className="w-4 h-4 rounded-full mr-3" 
+                      <div
+                        className="w-4 h-4 rounded-full mr-3"
                         style={{ backgroundColor: item.task.color }}
                       />
                       <span className="font-medium text-gray-900 flex-1">
@@ -332,7 +334,7 @@ export default function Reports() {
         <Card>
           <CardContent className="p-4">
             <h4 className="text-lg font-semibold text-gray-900 mb-3">Resumo Diário</h4>
-            
+
             {dailyStatsWithNames.length > 0 ? (
               <div className="space-y-3">
                 {dailyStatsWithNames.map((day) => (

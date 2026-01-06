@@ -11,6 +11,7 @@ import {
 
 export interface IStorage {
   // User authentication methods
+  getUserByUsernameOrEmail(identifier: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByApiKey(apiKey: string): Promise<User | undefined>;
   getUserByResetToken(token: string): Promise<User | undefined>;
@@ -46,7 +47,10 @@ export interface IStorage {
   updateProject(id: number, updates: Partial<Project>): Promise<Project | undefined>;
   getUserPersonalProject(userId: number): Promise<Project | undefined>;
   getProjectsForUser(userId: number): Promise<Project[]>; // Personal + Team projects
+  getAllProjects(): Promise<Project[]>; // Admin only
   bindProjectToTeam(projectTeam: InsertProjectTeam): Promise<ProjectTeam>;
+  getProjectsForTeam(teamId: number): Promise<Project[]>;
+  unbindProjectFromTeam(teamId: number, projectId: number): Promise<boolean>;
   // Task methods
   getAllTasks(): Promise<TaskWithStats[]>;
   getTask(id: number): Promise<Task | undefined>;
@@ -86,6 +90,7 @@ export interface IStorage {
     dueTodayTasks: number;
     dueTomorrowTasks: number;
     nearingLimitTasks: number;
+    efficiency: number; // Porcentagem (0-100+)
   }>;
   getTimeByTask(userId: number, startDate?: Date, endDate?: Date): Promise<Array<{ task: Task; totalTime: number }>>;
   getDailyStats(userId: number, startDate: Date, endDate: Date): Promise<Array<{ date: string; totalTime: number }>>;
@@ -154,6 +159,7 @@ export class MemStorage implements IStorage {
       resetTokenExpiry: null,
       lastLogin: null,
       apiKey: 'pont_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
+      recoveryKey: null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -162,6 +168,13 @@ export class MemStorage implements IStorage {
   }
 
   // User authentication methods
+  async getUserByUsernameOrEmail(identifier: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user =>
+      user.username.toLowerCase() === identifier.toLowerCase() ||
+      user.email.toLowerCase() === identifier.toLowerCase()
+    );
+  }
+
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(user => user.username === username);
   }
@@ -200,6 +213,7 @@ export class MemStorage implements IStorage {
       resetTokenExpiry: null,
       lastLogin: null,
       apiKey: userData.apiKey || null,
+      recoveryKey: userData.recoveryKey || null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -276,7 +290,10 @@ export class MemStorage implements IStorage {
   async updateProject(id: number, updates: Partial<Project>): Promise<Project | undefined> { throw new Error("Not implemented in MemStorage"); }
   async getUserPersonalProject(userId: number): Promise<Project | undefined> { throw new Error("Not implemented in MemStorage"); }
   async getProjectsForUser(userId: number): Promise<Project[]> { throw new Error("Not implemented in MemStorage"); }
+  async getAllProjects(): Promise<Project[]> { throw new Error("Not implemented in MemStorage"); }
   async bindProjectToTeam(projectTeam: InsertProjectTeam): Promise<ProjectTeam> { throw new Error("Not implemented in MemStorage"); }
+  async getProjectsForTeam(teamId: number): Promise<Project[]> { throw new Error("Not implemented in MemStorage"); }
+  async unbindProjectFromTeam(teamId: number, projectId: number): Promise<boolean> { throw new Error("Not implemented in MemStorage"); }
 
   // Task methods
   async getAllTasks(): Promise<TaskWithStats[]> {
@@ -521,7 +538,9 @@ export class MemStorage implements IStorage {
     overTimeTasks: number;
     dueTodayTasks: number;
     dueTomorrowTasks: number;
+    dueTomorrowTasks: number;
     nearingLimitTasks: number;
+    efficiency: number;
   }> {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -557,7 +576,8 @@ export class MemStorage implements IStorage {
       overTimeTasks: 0,
       dueTodayTasks: 0,
       dueTomorrowTasks: 0,
-      nearingLimitTasks: 0
+      nearingLimitTasks: 0,
+      efficiency: 0
     };
   }
 
